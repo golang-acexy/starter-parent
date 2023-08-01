@@ -22,7 +22,7 @@ type ModuleLoader interface {
 }
 
 func Load(loaders []ModuleLoader) error {
-	if len(loaders) == 0 {
+	if len(loaders) != 0 {
 		var err error
 		for _, loader := range loaders {
 			err = loader.Register(loader.Interceptor())
