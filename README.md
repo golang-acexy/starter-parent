@@ -1,2 +1,2 @@
-# go-starter-parent
+# starter-parent
 go framework root module
