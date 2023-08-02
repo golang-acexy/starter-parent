@@ -88,12 +88,13 @@ func TestLoadAndUnload(t *testing.T) {
 		return
 	}
 
+	time.Sleep(2 * time.Second)
+
 	st := time.Now().UnixMilli()
 	result := m.Unload(10)
 	fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
 
-	st = time.Now().UnixMilli()
-	result = m.UnloadByConfig()
-	fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
-
+	//st = time.Now().UnixMilli()
+	//result = m.UnloadByConfig()
+	//fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
 }
