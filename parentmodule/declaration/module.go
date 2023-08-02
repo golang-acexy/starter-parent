@@ -49,7 +49,7 @@ type ModuleLoader interface {
 
 // Load 依次启动每个模块
 // 采用同步的模式，仅当上一个模块启动正常后执行后续启动
-func (m Module) Load(loaders []ModuleLoader) error {
+func (m *Module) Load(loaders []ModuleLoader) error {
 	if len(loaders) != 0 {
 		var err error
 		for _, loader := range loaders {
@@ -68,7 +68,7 @@ func (m Module) Load(loaders []ModuleLoader) error {
 // Unload 依次卸载每个模块 仅在上一个模块成功卸载后处理下一个 忽略UnregisterConfig配置
 // param	maxWaitSeconds 等待优雅停机的最大时间(秒) 该时间将分别作用于每个模块
 // return	返回每个模块名对应是否优雅停机结果
-func (m Module) Unload(maxWaitSeconds uint) (map[string]bool, error) {
+func (m *Module) Unload(maxWaitSeconds uint) (map[string]bool, error) {
 	shutdownResult := make(map[string]bool, len(m.moduleLoaders))
 	for index, loader := range m.moduleLoaders {
 		gracefully, err := loader.Unregister(maxWaitSeconds)
@@ -87,7 +87,7 @@ func (m Module) Unload(maxWaitSeconds uint) (map[string]bool, error) {
 
 // UnloadByConfig 根据配置规则卸载模块，如果未配置config，将自动使用默认配置进行卸载
 // 默认配置 优先级最低(且不保证顺序) 同步卸载 最大优雅停机等待时机10s
-func (m Module) UnloadByConfig(maxWaitSeconds uint) (map[string]bool, error) {
+func (m *Module) UnloadByConfig(maxWaitSeconds uint) (map[string]bool, error) {
 	for _, loader := range m.moduleLoaders {
 		config := loader.ModuleConfig()
 		if config == nil {
