@@ -24,7 +24,7 @@ func (Module1) Interceptor() *func(instance interface{}) {
 
 func (Module1) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
 	time.Sleep(time.Second * 3)
-	return false, nil
+	return true, nil
 }
 
 type Module2 struct {
