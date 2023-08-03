@@ -11,7 +11,7 @@ type Module1 struct {
 }
 
 func (Module1) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{ModuleName: "Module1", UnregisterPriority: 1, UnregisterAllowAsync: true}
+	return &ModuleConfig{UnregisterPriority: 1, UnregisterAllowAsync: true}
 }
 
 func (Module1) Register(interceptor *func(instance interface{})) error {
@@ -51,7 +51,7 @@ type Module3 struct {
 }
 
 func (Module3) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{ModuleName: "Module3", UnregisterPriority: 5}
+	return nil
 }
 
 func (Module3) Register(interceptor *func(instance interface{})) error {
@@ -91,10 +91,10 @@ func TestLoadAndUnload(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	st := time.Now().UnixMilli()
-	result := m.Unload(10)
-	fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
 
-	//st = time.Now().UnixMilli()
-	//result = m.UnloadByConfig()
+	//result := m.Unload(10)
 	//fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
+
+	result := m.UnloadByConfig()
+	fmt.Printf("%+v\n cost %+d \n", result, time.Now().UnixMilli()-st)
 }
