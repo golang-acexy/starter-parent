@@ -2,9 +2,10 @@ package declaration
 
 import (
 	"errors"
+	"github.com/acexy/golang-toolkit/log"
 	"sort"
-	"strconv"
 	"sync"
+	"time"
 )
 
 type Module struct {
@@ -53,7 +54,11 @@ func (c sortedModuleByUnregisterPriority) Swap(i, j int) {
 }
 
 func (c sortedModuleByUnregisterPriority) Less(i, j int) bool {
-	return c[i].ModuleConfig().UnregisterPriority < c[j].ModuleConfig().UnregisterPriority
+	configI := c[i].ModuleConfig()
+	configI = checkConfig(configI)
+	configJ := c[j].ModuleConfig()
+	configJ = checkConfig(configJ)
+	return configI.UnregisterPriority < configJ.UnregisterPriority
 }
 
 // ModuleLoader 声明starter加载的通用接口
@@ -81,10 +86,19 @@ func (m *Module) Load() error {
 	if len(m.ModuleLoaders) != 0 {
 		var err error
 		for _, loader := range m.ModuleLoaders {
+			var moduleName string
+			if loader.ModuleConfig() == nil || loader.ModuleConfig().ModuleName == "" {
+				moduleName = "unnamed"
+			} else {
+				moduleName = loader.ModuleConfig().ModuleName
+			}
+			t := time.Now().UnixMilli()
 			err = loader.Register(loader.Interceptor())
 			if err != nil {
+				log.Logrus().WithField("moduleName", moduleName).Errorln("load module error")
 				return err
 			}
+			log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("load module success")
 		}
 		return nil
 	} else {
@@ -96,25 +110,34 @@ func (m *Module) Load() error {
 // param	maxWaitSeconds 等待优雅停机的最大时间(秒) 该时间将分别作用于每个模块
 // return	map[string]ShutdownResult
 func (m *Module) Unload(maxWaitSeconds uint) []ShutdownResult {
+	log.Logrus().Traceln("uninstall modules one by one")
 	shutdownResult := make([]ShutdownResult, len(m.ModuleLoaders))
 	for index, loader := range m.ModuleLoaders {
-		gracefully, err := loader.Unregister(maxWaitSeconds)
 		var moduleName string
 		if loader.ModuleConfig() == nil || loader.ModuleConfig().ModuleName == "" {
-			moduleName = "unnamed " + strconv.Itoa(index)
+			moduleName = "unnamed"
 		} else {
 			moduleName = loader.ModuleConfig().ModuleName
 		}
+		t := time.Now().UnixMilli()
+		gracefully, err := loader.Unregister(maxWaitSeconds)
+
 		if err == nil {
 			shutdownResult[index] = ShutdownResult{
 				ModuleName: moduleName,
 				Gracefully: gracefully,
+			}
+			if gracefully {
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("unload module success")
+			} else {
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
 			}
 		} else {
 			shutdownResult[index] = ShutdownResult{
 				ModuleName: moduleName,
 				Err:        err,
 			}
+			log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(err).Errorln("unload module error")
 		}
 	}
 	return shutdownResult
@@ -123,54 +146,82 @@ func (m *Module) Unload(maxWaitSeconds uint) []ShutdownResult {
 // UnloadByConfig 根据配置规则卸载模块，如果未配置config，将自动使用默认配置进行卸载
 // 默认配置： 优先级最低(且不保证顺序) 同步卸载 最大优雅停机等待时机20s
 func (m *Module) UnloadByConfig() []ShutdownResult {
-	allModuleConfig := make([]*ModuleConfig, len(m.ModuleLoaders))
-	for index, loader := range m.ModuleLoaders {
-		config := loader.ModuleConfig()
-		if config == nil {
-			config = &ModuleConfig{
-				ModuleName:               "unnamed " + strconv.Itoa(index),
-				UnregisterPriority:       defaultConfigUnregisterPriority,
-				UnregisterAllowAsync:     false,
-				UnregisterMaxWaitSeconds: defaultConfigUnregisterMaxWaitSeconds,
-			}
-		} else {
-			// 检查配置内容
-			if config.ModuleName == "" {
-				config.ModuleName = "unnamed " + strconv.Itoa(index)
-			}
-			if config.UnregisterMaxWaitSeconds == 0 {
-				config.UnregisterMaxWaitSeconds = defaultConfigUnregisterMaxWaitSeconds
-			}
-		}
-		allModuleConfig = append(allModuleConfig, config)
-	}
+	log.Logrus().Traceln("uninstall modules by unregisterPriority")
 
 	var wait sync.WaitGroup
 	wait.Add(len(m.ModuleLoaders))
 
 	sort.Sort(sortedModuleByUnregisterPriority(m.ModuleLoaders))
-
 	shutdownResult := make([]ShutdownResult, len(m.ModuleLoaders))
-
 	for index, loader := range m.ModuleLoaders {
-		shutdownResult[index] = ShutdownResult{ModuleName: loader.ModuleConfig().ModuleName}
-		if loader.ModuleConfig().UnregisterAllowAsync {
-			go unload(&wait, loader, &shutdownResult[index])
+		var moduleName string
+		if loader.ModuleConfig() == nil || loader.ModuleConfig().ModuleName == "" {
+			moduleName = "unnamed"
 		} else {
-			unload(&wait, loader, &shutdownResult[index])
+			moduleName = loader.ModuleConfig().ModuleName
+		}
+		shutdownResult[index] = ShutdownResult{ModuleName: moduleName}
+		config := checkConfig(loader.ModuleConfig())
+
+		if config.UnregisterAllowAsync {
+			result := shutdownResult[index]
+			t := time.Now().UnixMilli()
+			go unload(&wait, loader, &result)
+			if result.Err != nil {
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("async unload module error")
+			} else {
+				if result.Gracefully {
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async unload module success")
+				} else {
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async unload module not gracefully")
+				}
+			}
+		} else {
+			result := shutdownResult[index]
+			t := time.Now().UnixMilli()
+			unload(&wait, loader, &result)
+			if result.Err != nil {
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("unload module error")
+			} else {
+				if result.Gracefully {
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("unload module success")
+				} else {
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
+				}
+			}
 		}
 	}
-
 	wait.Wait()
 	return shutdownResult
 }
 
 func unload(wait *sync.WaitGroup, loader ModuleLoader, shutdownResult *ShutdownResult) {
 	defer wait.Done()
-	gracefully, err := loader.Unregister(loader.ModuleConfig().UnregisterMaxWaitSeconds)
+	gracefully, err := loader.Unregister(checkConfig(loader.ModuleConfig()).UnregisterMaxWaitSeconds)
 	if err == nil {
 		shutdownResult.Gracefully = gracefully
 	} else {
 		shutdownResult.Err = err
+	}
+}
+
+func checkConfig(config *ModuleConfig) *ModuleConfig {
+	if config == nil {
+		config = &ModuleConfig{
+			ModuleName:               "unnamed",
+			UnregisterPriority:       defaultConfigUnregisterPriority,
+			UnregisterAllowAsync:     false,
+			UnregisterMaxWaitSeconds: defaultConfigUnregisterMaxWaitSeconds,
+		}
+		return config
+	} else {
+		// 检查配置内容
+		if config.ModuleName == "" {
+			config.ModuleName = "unnamed"
+		}
+		if config.UnregisterMaxWaitSeconds == 0 {
+			config.UnregisterMaxWaitSeconds = defaultConfigUnregisterMaxWaitSeconds
+		}
+		return config
 	}
 }
