@@ -1,6 +1,7 @@
 package declaration
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -11,7 +12,7 @@ type Module1 struct {
 }
 
 func (Module1) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{UnregisterPriority: 1, UnregisterAllowAsync: true}
+	return &ModuleConfig{UnregisterPriority: 1, UnregisterAllowAsync: true, ModuleName: "module1"}
 }
 
 func (Module1) Register(interceptor *func(instance interface{})) error {
@@ -31,7 +32,7 @@ type Module2 struct {
 }
 
 func (Module2) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{ModuleName: "Module2", UnregisterPriority: 2}
+	return &ModuleConfig{ModuleName: "module2", UnregisterPriority: 0, UnregisterAllowAsync: true}
 }
 
 func (Module2) Register(interceptor *func(instance interface{})) error {
@@ -44,7 +45,7 @@ func (Module2) Interceptor() *func(instance interface{}) {
 
 func (Module2) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
 	time.Sleep(time.Second * 1)
-	return true, nil
+	return false, nil
 }
 
 type Module3 struct {
@@ -63,20 +64,22 @@ func (Module3) Interceptor() *func(instance interface{}) {
 }
 
 func (Module3) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
-	time.Sleep(time.Second * 1)
-	return false, nil
+	time.Sleep(time.Second * 2)
+	return false, errors.New("error")
 }
 
 func TestSortModuleByUnregisterPriority(t *testing.T) {
 	modules := []ModuleLoader{Module1{}, Module3{}, Module2{}}
 
 	for _, m := range modules {
-		fmt.Println(m.ModuleConfig().ModuleName, m.ModuleConfig().UnregisterPriority)
+		v := checkModuleConfig(m.ModuleConfig())
+		fmt.Println(v.ModuleName, v.UnregisterPriority)
 	}
 	sort.Sort(sortedModuleByUnregisterPriority(modules))
 	fmt.Println("sorted")
 	for _, m := range modules {
-		fmt.Println(m.ModuleConfig().ModuleName, m.ModuleConfig().UnregisterPriority)
+		v := checkModuleConfig(m.ModuleConfig())
+		fmt.Println(v.ModuleName, v.UnregisterPriority)
 	}
 }
 
