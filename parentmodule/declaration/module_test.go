@@ -1,6 +1,7 @@
 package declaration
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -31,7 +32,7 @@ type Module2 struct {
 }
 
 func (Module2) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{ModuleName: "Module2", UnregisterPriority: 2}
+	return &ModuleConfig{ModuleName: "Module2", UnregisterPriority: 2, UnregisterAllowAsync: true}
 }
 
 func (Module2) Register(interceptor *func(instance interface{})) error {
@@ -44,7 +45,7 @@ func (Module2) Interceptor() *func(instance interface{}) {
 
 func (Module2) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
 	time.Sleep(time.Second * 1)
-	return true, nil
+	return false, nil
 }
 
 type Module3 struct {
@@ -64,7 +65,7 @@ func (Module3) Interceptor() *func(instance interface{}) {
 
 func (Module3) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
 	time.Sleep(time.Second * 1)
-	return false, nil
+	return false, errors.New("error")
 }
 
 func TestSortModuleByUnregisterPriority(t *testing.T) {

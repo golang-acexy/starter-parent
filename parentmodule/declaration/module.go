@@ -167,6 +167,7 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
 			go func() {
+				defer wait.Done()
 				unload(&wait, loader, result)
 				if result.Err != nil {
 					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("async unload module error")
@@ -179,6 +180,7 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 				}
 			}()
 		} else {
+
 			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
 			unload(&wait, loader, result)
@@ -191,6 +193,7 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
 				}
 			}
+			wait.Done()
 		}
 	}
 	wait.Wait()
@@ -198,7 +201,6 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 }
 
 func unload(wait *sync.WaitGroup, loader ModuleLoader, shutdownResult *ShutdownResult) {
-	defer wait.Done()
 	gracefully, err := loader.Unregister(checkConfig(loader.ModuleConfig()).UnregisterMaxWaitSeconds)
 	if err == nil {
 		shutdownResult.Gracefully = gracefully
@@ -217,7 +219,6 @@ func checkConfig(config *ModuleConfig) *ModuleConfig {
 		}
 		return config
 	} else {
-		// 检查配置内容
 		if config.ModuleName == "" {
 			config.ModuleName = "unnamed"
 		}
