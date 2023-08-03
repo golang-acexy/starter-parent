@@ -166,16 +166,18 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 		if config.UnregisterAllowAsync {
 			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
-			go unload(&wait, loader, result)
-			if result.Err != nil {
-				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("async unload module error")
-			} else {
-				if result.Gracefully {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async unload module success")
+			go func() {
+				unload(&wait, loader, result)
+				if result.Err != nil {
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("async unload module error")
 				} else {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async unload module not gracefully")
+					if result.Gracefully {
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async unload module success")
+					} else {
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async unload module not gracefully")
+					}
 				}
-			}
+			}()
 		} else {
 			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
