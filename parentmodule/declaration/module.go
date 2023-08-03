@@ -164,9 +164,9 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 		config := checkConfig(loader.ModuleConfig())
 
 		if config.UnregisterAllowAsync {
-			result := shutdownResult[index]
+			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
-			go unload(&wait, loader, &result)
+			go unload(&wait, loader, result)
 			if result.Err != nil {
 				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("async unload module error")
 			} else {
@@ -177,9 +177,9 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 				}
 			}
 		} else {
-			result := shutdownResult[index]
+			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
-			unload(&wait, loader, &result)
+			unload(&wait, loader, result)
 			if result.Err != nil {
 				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("unload module error")
 			} else {
