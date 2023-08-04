@@ -65,7 +65,7 @@ func (Module3) Interceptor() *func(instance interface{}) {
 
 func (Module3) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
 	time.Sleep(time.Second * 2)
-	return false, errors.New("error")
+	return false, errors.New("ERROR")
 }
 
 func TestSortModuleByUnregisterPriority(t *testing.T) {
