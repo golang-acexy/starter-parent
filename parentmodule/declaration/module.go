@@ -25,7 +25,7 @@ type ShutdownResult struct {
 }
 
 // ModuleConfig 卸载模块时对应的配置
-// 注意	直接执行Unload函数，卸载配置将忽略，执行按照加载顺序反向卸载
+// 注意	直接执行Unload函数，卸载配置将忽略，执行按照加载顺序卸载
 type ModuleConfig struct {
 
 	// 模块名称
@@ -128,16 +128,16 @@ func (m *Module) Unload(maxWaitSeconds uint) []ShutdownResult {
 				Gracefully: gracefully,
 			}
 			if gracefully {
-				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("unload module success")
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("doUnload module success")
 			} else {
-				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("doUnload module not gracefully")
 			}
 		} else {
 			shutdownResult[index] = ShutdownResult{
 				ModuleName: moduleName,
 				Err:        err,
 			}
-			log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(err).Errorln("unload module error")
+			log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(err).Errorln("doUnload module error")
 		}
 	}
 	return shutdownResult
@@ -164,28 +164,28 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 			go func(l ModuleLoader, r *ShutdownResult) {
 				t := time.Now().UnixMilli()
 				defer wait.Done()
-				unload(l, r)
+				doUnload(l, r)
 				if r.Err != nil {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(r.Err).Errorln("async unload module error")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(r.Err).Errorln("async doUnload module error")
 				} else {
 					if r.Gracefully {
-						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async unload module success")
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async doUnload module success")
 					} else {
-						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async unload module not gracefully")
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async doUnload module not gracefully")
 					}
 				}
 			}(loader, &shutdownResult[index])
 		} else {
 			result := &shutdownResult[index]
 			t := time.Now().UnixMilli()
-			unload(loader, result)
+			doUnload(loader, result)
 			if result.Err != nil {
-				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("unload module error")
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("doUnload module error")
 			} else {
 				if result.Gracefully {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("unload module success")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("doUnload module success")
 				} else {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("doUnload module not gracefully")
 				}
 			}
 			wait.Done()
@@ -195,7 +195,7 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 	return shutdownResult
 }
 
-func unload(loader ModuleLoader, shutdownResult *ShutdownResult) {
+func doUnload(loader ModuleLoader, shutdownResult *ShutdownResult) {
 	gracefully, err := loader.Unregister(checkModuleConfig(loader.ModuleConfig()).UnregisterMaxWaitSeconds)
 	if err == nil {
 		shutdownResult.Gracefully = gracefully
