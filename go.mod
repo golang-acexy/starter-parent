@@ -2,7 +2,7 @@ module github.com/golang-acexy/starter-parent
 
 go 1.18
 
-require github.com/acexy/golang-toolkit v0.0.0-20230804103353-5b637f782bed
+require github.com/acexy/golang-toolkit v0.0.0-20230806033004-79b4c35b4e8f
 
 require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
