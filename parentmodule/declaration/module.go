@@ -146,7 +146,7 @@ func (m *Module) Unload(maxWaitSeconds uint) []ShutdownResult {
 // UnloadByConfig 根据配置规则卸载模块，如果未配置config，将自动使用默认配置进行卸载
 // 默认配置： 优先级最低(且不保证顺序) 同步卸载 最大优雅停机等待时机20s
 func (m *Module) UnloadByConfig() []ShutdownResult {
-	log.Logrus().Traceln("uninstall modules by unregisterPriority")
+	log.Logrus().Traceln("unload modules by unregisterPriority")
 	var wait sync.WaitGroup
 	wait.Add(len(m.ModuleLoaders))
 	sort.Sort(sortedModuleByUnregisterPriority(m.ModuleLoaders)) // 按照权重重新分配关停顺序
@@ -166,12 +166,12 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 				defer wait.Done()
 				doUnload(l, r)
 				if r.Err != nil {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(r.Err).Errorln("async doUnload module error")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(r.Err).Errorln("async unload module error")
 				} else {
 					if r.Gracefully {
-						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async doUnload module success")
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("async unload module success")
 					} else {
-						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async doUnload module not gracefully")
+						log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("async unload module not gracefully")
 					}
 				}
 			}(loader, &shutdownResult[index])
@@ -180,18 +180,19 @@ func (m *Module) UnloadByConfig() []ShutdownResult {
 			t := time.Now().UnixMilli()
 			doUnload(loader, result)
 			if result.Err != nil {
-				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("doUnload module error")
+				log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).WithError(result.Err).Errorln("unload module error")
 			} else {
 				if result.Gracefully {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("doUnload module success")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("unload module success")
 				} else {
-					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("doUnload module not gracefully")
+					log.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Warnln("unload module not gracefully")
 				}
 			}
 			wait.Done()
 		}
 	}
 	wait.Wait()
+	log.Logrus().Traceln("all module unloaded")
 	return shutdownResult
 }
 
