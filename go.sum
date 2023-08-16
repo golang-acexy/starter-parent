@@ -8,6 +8,8 @@ github.com/acexy/golang-toolkit v0.0.0-20230806033004-79b4c35b4e8f h1:0aLhPEjKhQ
 github.com/acexy/golang-toolkit v0.0.0-20230806033004-79b4c35b4e8f/go.mod h1:EPGfyjyKhz3+QApX9JXZL7EttEC2S5W+WDb2Hc5lcdw=
 github.com/acexy/golang-toolkit v0.0.0-20230807093347-1c0dab6aed7a h1:JJ7EgHgkN0O/GnpMporT+HqCEqtq/t3DAB86/3AWcRI=
 github.com/acexy/golang-toolkit v0.0.0-20230807093347-1c0dab6aed7a/go.mod h1:3n9MoH2lbxZhkcgndbXUXLR8njNDeEBO9xgf6mvAdxE=
+github.com/acexy/golang-toolkit v0.0.0-20230811064636-d85e20f3df90 h1:i0Bx1Q3IEzMgcyQ30TxV+tckEWSyjMrBli5kUsAdYYU=
+github.com/acexy/golang-toolkit v0.0.0-20230811064636-d85e20f3df90/go.mod h1:3n9MoH2lbxZhkcgndbXUXLR8njNDeEBO9xgf6mvAdxE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
