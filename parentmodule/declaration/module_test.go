@@ -15,11 +15,11 @@ func (Module1) ModuleConfig() *ModuleConfig {
 	return &ModuleConfig{UnregisterPriority: 1, UnregisterAllowAsync: true, ModuleName: "module1"}
 }
 
-func (Module1) Register(interceptor *func(instance interface{})) error {
+func (Module1) Register() error {
 	return nil
 }
 
-func (Module1) Interceptor() *func(instance interface{}) {
+func (Module1) RawInstance() interface{} {
 	return nil
 }
 
@@ -32,15 +32,17 @@ type Module2 struct {
 }
 
 func (Module2) ModuleConfig() *ModuleConfig {
-	return &ModuleConfig{ModuleName: "module2", UnregisterPriority: 0, UnregisterAllowAsync: true}
+	return &ModuleConfig{ModuleName: "module2", UnregisterPriority: 0, UnregisterAllowAsync: true, LoadInterceptor: func(instance interface{}) {
+		fmt.Println(instance)
+	}}
 }
 
-func (Module2) Register(interceptor *func(instance interface{})) error {
+func (Module2) Register() error {
 	return nil
 }
 
-func (Module2) Interceptor() *func(instance interface{}) {
-	return nil
+func (Module2) RawInstance() interface{} {
+	return "1"
 }
 
 func (Module2) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
@@ -55,11 +57,11 @@ func (Module3) ModuleConfig() *ModuleConfig {
 	return nil
 }
 
-func (Module3) Register(interceptor *func(instance interface{})) error {
+func (Module3) Register() error {
 	return nil
 }
 
-func (Module3) Interceptor() *func(instance interface{}) {
+func (Module3) RawInstance() interface{} {
 	return nil
 }
 
@@ -76,7 +78,7 @@ func TestSortModuleByUnregisterPriority(t *testing.T) {
 		fmt.Println(v.ModuleName, v.UnregisterPriority)
 	}
 	sort.Sort(sortedModuleByUnregisterPriority(modules))
-	fmt.Println("sorted")
+	fmt.Println("sort unload priority")
 	for _, m := range modules {
 		v := checkModuleConfig(m.ModuleConfig())
 		fmt.Println(v.ModuleName, v.UnregisterPriority)
