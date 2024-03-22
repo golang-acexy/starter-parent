@@ -31,6 +31,9 @@ type ModuleConfig struct {
 	// 模块名称
 	ModuleName string
 
+	// 注册模块的拦截器，用于获取原始模块的实例，进行拓展配置
+	LoadInterceptor func(instance interface{})
+
 	// 卸载时优先级，权重越小，优先级越高
 	// 注意，相同的优先级会导致不稳定排序出现不稳定的同优先级先后顺序
 	UnregisterPriority uint
@@ -68,11 +71,10 @@ type ModuleLoader interface {
 	ModuleConfig() *ModuleConfig
 
 	// Register  声明模块的注册启动方法
-	Register(interceptor *func(instance interface{})) error
+	Register() error
 
-	// Interceptor 用于执行Register时，获取原始模块实例，完成更多参数初始化 这是一个可选的实现
-	// return	func instance 通常是一个模块对应的原始实例，以便于通过interceptor初始化原始模块的更多参数
-	Interceptor() *func(instance interface{})
+	// RawInstance 原始模块的实例
+	RawInstance() interface{}
 
 	// Unregister 声明模块的卸载关闭方法 函数会阻塞直到停机完成
 	// param	maxWaitSeconds 等待优雅停机的最大时间 (秒)
@@ -93,7 +95,14 @@ func (m *Module) Load() error {
 				moduleName = loader.ModuleConfig().ModuleName
 			}
 			t := time.Now().UnixMilli()
-			err = loader.Register(loader.Interceptor())
+			instance := loader.RawInstance()
+			if instance != nil {
+				loadInterceptor := loader.ModuleConfig().LoadInterceptor
+				if loadInterceptor != nil {
+					loadInterceptor(instance)
+				}
+			}
+			err = loader.Register()
 			if err != nil {
 				logger.Logrus().WithField("moduleName", moduleName).Errorln("load module error")
 				return err
