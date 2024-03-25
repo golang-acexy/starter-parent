@@ -71,10 +71,7 @@ type ModuleLoader interface {
 	ModuleConfig() *ModuleConfig
 
 	// Register  声明模块的注册启动方法
-	Register() error
-
-	// RawInstance 原始模块的实例
-	RawInstance() interface{}
+	Register() (interface{}, error)
 
 	// Unregister 声明模块的卸载关闭方法 函数会阻塞直到停机完成
 	// param	maxWaitSeconds 等待优雅停机的最大时间 (秒)
@@ -86,27 +83,31 @@ type ModuleLoader interface {
 // 采用同步的模式，仅当上一个模块启动正常后执行后续启动，任何模块的错误将中断并返回异常
 func (m *Module) Load() error {
 	if len(m.ModuleLoaders) != 0 {
-		var err error
+
 		for _, loader := range m.ModuleLoaders {
+			moduleConfig := loader.ModuleConfig()
 			var moduleName string
-			if loader.ModuleConfig() == nil || loader.ModuleConfig().ModuleName == "" {
+
+			if moduleConfig == nil || moduleConfig.ModuleName == "" {
 				moduleName = "unnamed"
 			} else {
-				moduleName = loader.ModuleConfig().ModuleName
+				moduleName = moduleConfig.ModuleName
 			}
+
 			t := time.Now().UnixMilli()
-			instance := loader.RawInstance()
-			if instance != nil {
+			instance, err := loader.Register()
+			if err != nil {
+				logger.Logrus().WithField("moduleName", moduleName).Errorln("load module error")
+				return err
+			}
+
+			if moduleConfig != nil {
 				loadInterceptor := loader.ModuleConfig().LoadInterceptor
 				if loadInterceptor != nil {
 					loadInterceptor(instance)
 				}
 			}
-			err = loader.Register()
-			if err != nil {
-				logger.Logrus().WithField("moduleName", moduleName).Errorln("load module error")
-				return err
-			}
+
 			logger.Logrus().WithField("moduleName", moduleName).WithField("cost", time.Now().UnixMilli()-t).Traceln("load module success")
 		}
 		return nil
