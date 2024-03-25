@@ -120,7 +120,7 @@ func (m *Module) Load() error {
 // param	maxWaitSeconds 等待优雅停机的最大时间(秒) 该时间将分别作用于每个模块
 // return	map[string]ShutdownResult
 func (m *Module) Unload(maxWaitSeconds uint) []ShutdownResult {
-	logger.Logrus().Traceln("uninstall modules one by one")
+	logger.Logrus().Traceln("unload modules one by one")
 	shutdownResult := make([]ShutdownResult, len(m.ModuleLoaders))
 	for index, loader := range m.ModuleLoaders {
 		var moduleName string
