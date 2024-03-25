@@ -15,12 +15,8 @@ func (Module1) ModuleConfig() *ModuleConfig {
 	return &ModuleConfig{UnregisterPriority: 1, UnregisterAllowAsync: true, ModuleName: "module1"}
 }
 
-func (Module1) Register() error {
-	return nil
-}
-
-func (Module1) RawInstance() interface{} {
-	return nil
+func (Module1) Register() (interface{}, error) {
+	return nil, nil
 }
 
 func (Module1) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
@@ -37,12 +33,8 @@ func (Module2) ModuleConfig() *ModuleConfig {
 	}}
 }
 
-func (Module2) Register() error {
-	return nil
-}
-
-func (Module2) RawInstance() interface{} {
-	return "1"
+func (Module2) Register() (interface{}, error) {
+	return "1", nil
 }
 
 func (Module2) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
@@ -57,12 +49,8 @@ func (Module3) ModuleConfig() *ModuleConfig {
 	return nil
 }
 
-func (Module3) Register() error {
-	return nil
-}
-
-func (Module3) RawInstance() interface{} {
-	return nil
+func (Module3) Register() (interface{}, error) {
+	return nil, nil
 }
 
 func (Module3) Unregister(maxWaitSeconds uint) (gracefully bool, err error) {
