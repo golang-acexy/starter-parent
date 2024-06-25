@@ -55,7 +55,7 @@ func (g gorm) Start() (interface{}, error) {
 
 func (g gorm) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
 	time.Sleep(time.Second)
-	return false, false, err
+	return true, true, err
 }
 
 // gin module
@@ -121,4 +121,21 @@ func TestStartAndStopBySetting(t *testing.T) {
 		println(err)
 	}
 	showStopResult(result)
+}
+
+func TestStarterControl(t *testing.T) {
+	loader := parent.NewStarterLoader(starters)
+	err := loader.Start()
+	if err != nil {
+		println(err)
+		return
+	}
+	result, err := loader.StopStarter("gorm", time.Second)
+	if err != nil {
+		println(err)
+	}
+	showStopResult([]*parent.StopResult{result})
+	fmt.Println(loader.NotStarted())
+	_ = loader.Start()
+	fmt.Println(loader.NotStarted())
 }

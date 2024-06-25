@@ -70,6 +70,17 @@ func (s *starterWrappers) checkSetting() bool {
 	return true
 }
 
+// 未启动的组件名称
+func (s *starterWrappers) notStarted() []string {
+	starterNames := make([]string, 0)
+	for _, v := range *s {
+		if v.status != 1 {
+			starterNames = append(starterNames, v.getStarterName())
+		}
+	}
+	return starterNames
+}
+
 // 实现Sort接口
 
 func (s *starterWrappers) Len() int {
@@ -168,7 +179,7 @@ func (s *starterLoader) Start() error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	for _, wrapper := range *s.starters {
-		if err := startOne(wrapper); err != nil {
+		if err := start(wrapper); err != nil {
 			return err
 		}
 	}
@@ -183,7 +194,7 @@ func (s *starterLoader) StartStarter(starterName string) error {
 	if wrapper == nil {
 		return errors.New("unknown starterName: " + starterName)
 	}
-	return startOne(wrapper)
+	return start(wrapper)
 }
 
 // StopBySetting 按照卸载配置停止所有模块
@@ -208,16 +219,20 @@ func (s *starterLoader) StopBySetting() ([]*StopResult, error) {
 		if setting.stopAllowAsync {
 			go func(index int, starterWrapper *starterWrapper) {
 				defer wg.Done()
-				stopResult[index] = stopOne(starterWrapper, setting.stopMaxWaitTime)
+				stopResult[index] = stop(starterWrapper, setting.stopMaxWaitTime)
 			}(i, wrapper)
 		} else {
-			stopResult[i] = stopOne(wrapper, setting.stopMaxWaitTime)
+			stopResult[i] = stop(wrapper, setting.stopMaxWaitTime)
 			wg.Done()
 		}
 	}
-
 	wg.Wait()
 	return stopResult, nil
+}
+
+// NotStarted 未启动的模块名
+func (s *starterLoader) NotStarted() []string {
+	return s.starters.notStarted()
 }
 
 // Stop 按starter加载顺序停止所有模块 忽略卸载配置
@@ -226,7 +241,7 @@ func (s *starterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 	s.Mutex.Lock()
 	stopResult := make([]*StopResult, 0)
 	for _, wrapper := range *s.starters {
-		stopResult = append(stopResult, stopOne(wrapper, maxWaitTime))
+		stopResult = append(stopResult, stop(wrapper, maxWaitTime))
 	}
 	return stopResult, nil
 }
@@ -239,11 +254,11 @@ func (s *starterLoader) StopStarter(starterName string, maxWaitTime time.Duratio
 	if wrapper == nil {
 		return nil, errors.New("unknown starterName: " + starterName)
 	}
-	return stopOne(wrapper, maxWaitTime), nil
+	return stop(wrapper, maxWaitTime), nil
 }
 
 // 启动指定的模块 如果已启动则忽略
-func startOne(wrapper *starterWrapper) error {
+func start(wrapper *starterWrapper) error {
 	if wrapper.status != 1 {
 		starter := wrapper.starter
 		setting := starter.Setting()
@@ -265,7 +280,7 @@ func startOne(wrapper *starterWrapper) error {
 }
 
 // 停止指定的模块
-func stopOne(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
+func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	starterName := wrapper.getStarterName()
 	if wrapper.status != 1 {
 		return &StopResult{StarterName: starterName, Error: errors.New("not started"), Gracefully: false}
