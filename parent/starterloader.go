@@ -71,7 +71,7 @@ func (s *starterWrappers) checkSetting() bool {
 }
 
 // 未启动的组件名称
-func (s *starterWrappers) notStarted() []string {
+func (s *starterWrappers) stoppedStarters() []string {
 	starterNames := make([]string, 0)
 	for _, v := range *s {
 		if v.status != 1 {
@@ -145,19 +145,20 @@ type StopResult struct {
 
 // NewStarterLoader 创建一个模块加载器
 func NewStarterLoader(starters []Starter) *StarterLoader {
-	if len(starters) == 0 {
-		return nil
-	}
 	loaderOnce.Do(func() {
-		if loader == nil {
-			wrappers := make([]*starterWrapper, len(starters))
-			for i, v := range starters {
-				wrappers[i] = &starterWrapper{
-					starter: v,
+		if len(starters) == 0 {
+			loader = &StarterLoader{}
+		} else {
+			if loader == nil {
+				wrappers := make([]*starterWrapper, len(starters))
+				for i, v := range starters {
+					wrappers[i] = &starterWrapper{
+						starter: v,
+					}
 				}
-			}
-			loader = &StarterLoader{
-				starters: (*starterWrappers)(&wrappers),
+				loader = &StarterLoader{
+					starters: (*starterWrappers)(&wrappers),
+				}
 			}
 		}
 	})
@@ -168,6 +169,9 @@ func NewStarterLoader(starters []Starter) *StarterLoader {
 func (s *StarterLoader) AddStarter(starter Starter) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		*s.starters = make([]*starterWrapper, 0)
+	}
 	v := append(*s.starters, &starterWrapper{
 		starter: starter,
 	})
@@ -178,6 +182,9 @@ func (s *StarterLoader) AddStarter(starter Starter) {
 func (s *StarterLoader) Start() error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		return errors.New("no starter")
+	}
 	for _, wrapper := range *s.starters {
 		if err := start(wrapper); err != nil {
 			return err
@@ -190,6 +197,9 @@ func (s *StarterLoader) Start() error {
 func (s *StarterLoader) StartStarter(starterName string) error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		return errors.New("no starter")
+	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
 		return errors.New("unknown starterName: " + starterName)
@@ -201,8 +211,11 @@ func (s *StarterLoader) StartStarter(starterName string) error {
 func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		return nil, errors.New("no starter")
+	}
 	if !s.starters.checkSetting() {
-		return nil, errors.New("some starter has no Setting")
+		return nil, errors.New("some starter has no setting")
 	}
 	var wg sync.WaitGroup
 	wg.Add(len(*s.starters))
@@ -230,17 +243,23 @@ func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
 	return stopResult, nil
 }
 
-// NotStarted 未启动的模块名
-func (s *StarterLoader) NotStarted() []string {
+// StoppedStarters 未启动的模块名
+func (s *StarterLoader) StoppedStarters() []string {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
-	return s.starters.notStarted()
+	if len(*s.starters) == 0 {
+		return nil
+	}
+	return s.starters.stoppedStarters()
 }
 
 // Stop 按starter加载顺序停止所有模块 忽略卸载配置
 func (s *StarterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		return nil, errors.New("no starter")
+	}
 	stopResult := make([]*StopResult, 0)
 	for _, wrapper := range *s.starters {
 		stopResult = append(stopResult, stop(wrapper, maxWaitTime))
@@ -252,6 +271,9 @@ func (s *StarterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duration) (*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	if len(*s.starters) == 0 {
+		return nil, errors.New("no starter")
+	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
 		return nil, errors.New("unknown starterName: " + starterName)

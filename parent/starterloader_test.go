@@ -134,7 +134,7 @@ func TestStarterControl(t *testing.T) {
 		println(err)
 	}
 	showStopResult([]*StopResult{result})
-	fmt.Println(loader.NotStarted())
+	fmt.Println(loader.StoppedStarters())
 	_ = loader.Start()
-	fmt.Println(loader.NotStarted())
+	fmt.Println(loader.StoppedStarters())
 }
