@@ -120,8 +120,8 @@ type Setting struct {
 	stopMaxWaitTime time.Duration
 }
 
-// NewSettings 创建一个模块设置
-func NewSettings(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance interface{})) *Setting {
+// NewSetting 创建一个模块设置
+func NewSetting(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance interface{})) *Setting {
 	return &Setting{
 		starterName:     starterName,
 		stopPriority:    stopPriority,

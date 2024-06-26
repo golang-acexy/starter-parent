@@ -13,7 +13,7 @@ type redis struct {
 }
 
 func (r redis) Setting() *Setting {
-	return NewSettings("", 3, true, time.Second*3, nil)
+	return NewSetting("", 3, true, time.Second*3, nil)
 }
 
 func (r redis) Start() (interface{}, error) {
@@ -40,7 +40,7 @@ type gorm struct {
 }
 
 func (g gorm) Setting() *Setting {
-	return NewSettings("gorm", 1, true, time.Second, func(instance interface{}) {
+	return NewSetting("gorm", 1, true, time.Second, func(instance interface{}) {
 		_, ok := instance.(*gorm)
 		if ok {
 			fmt.Println("init invoker")
@@ -62,7 +62,7 @@ type gin struct {
 }
 
 func (g gin) Setting() *Setting {
-	return NewSettings("gin", 2, true, time.Second, nil)
+	return NewSetting("gin", 2, true, time.Second, nil)
 }
 
 func (g gin) Start() (interface{}, error) {
