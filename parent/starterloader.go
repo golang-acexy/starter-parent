@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-var loader *starterLoader
+var loader *StarterLoader
 var loaderOnce sync.Once
 
-type starterLoader struct {
+type StarterLoader struct {
 	sync.Mutex
 	starters *starterWrappers
 }
@@ -116,7 +116,7 @@ type Setting struct {
 	stopAllowAsync bool
 
 	// 等待优雅停机的最大时间 (秒) (适用于starterLoader执行按设置卸载模块)
-	// starterLoader 该超时不由Loader控制，因为无法感知真实Stop的状态，由具体模块实现
+	// StarterLoader 该超时不由Loader控制，因为无法感知真实Stop的状态，由具体模块实现
 	stopMaxWaitTime time.Duration
 }
 
@@ -144,7 +144,7 @@ type StopResult struct {
 }
 
 // NewStarterLoader 创建一个模块加载器
-func NewStarterLoader(starters []Starter) *starterLoader {
+func NewStarterLoader(starters []Starter) *StarterLoader {
 	if len(starters) == 0 {
 		return nil
 	}
@@ -156,7 +156,7 @@ func NewStarterLoader(starters []Starter) *starterLoader {
 					starter: v,
 				}
 			}
-			loader = &starterLoader{
+			loader = &StarterLoader{
 				starters: (*starterWrappers)(&wrappers),
 			}
 		}
@@ -165,7 +165,7 @@ func NewStarterLoader(starters []Starter) *starterLoader {
 }
 
 // AddStarter 添加一个模块
-func (s *starterLoader) AddStarter(starter Starter) {
+func (s *StarterLoader) AddStarter(starter Starter) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	v := append(*s.starters, &starterWrapper{
@@ -175,7 +175,7 @@ func (s *starterLoader) AddStarter(starter Starter) {
 }
 
 // Start 启动所有未启动的模块 按starter加载顺序
-func (s *starterLoader) Start() error {
+func (s *StarterLoader) Start() error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	for _, wrapper := range *s.starters {
@@ -187,7 +187,7 @@ func (s *starterLoader) Start() error {
 }
 
 // StartStarter 启动指定未启动的模块
-func (s *starterLoader) StartStarter(starterName string) error {
+func (s *StarterLoader) StartStarter(starterName string) error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	wrapper := s.starters.find(starterName)
@@ -198,7 +198,7 @@ func (s *starterLoader) StartStarter(starterName string) error {
 }
 
 // StopBySetting 按照卸载配置停止所有模块
-func (s *starterLoader) StopBySetting() ([]*StopResult, error) {
+func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if !s.starters.checkSetting() {
@@ -231,14 +231,14 @@ func (s *starterLoader) StopBySetting() ([]*StopResult, error) {
 }
 
 // NotStarted 未启动的模块名
-func (s *starterLoader) NotStarted() []string {
+func (s *StarterLoader) NotStarted() []string {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	return s.starters.notStarted()
 }
 
 // Stop 按starter加载顺序停止所有模块 忽略卸载配置
-func (s *starterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
+func (s *StarterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	stopResult := make([]*StopResult, 0)
@@ -249,7 +249,7 @@ func (s *starterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 }
 
 // StopStarter 停止指定的模块
-func (s *starterLoader) StopStarter(starterName string, maxWaitTime time.Duration) (*StopResult, error) {
+func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duration) (*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	wrapper := s.starters.find(starterName)
