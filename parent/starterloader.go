@@ -232,6 +232,8 @@ func (s *starterLoader) StopBySetting() ([]*StopResult, error) {
 
 // NotStarted 未启动的模块名
 func (s *starterLoader) NotStarted() []string {
+	defer s.Mutex.Unlock()
+	s.Mutex.Lock()
 	return s.starters.notStarted()
 }
 
