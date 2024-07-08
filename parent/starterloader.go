@@ -3,6 +3,7 @@ package parent
 import (
 	"errors"
 	"github.com/acexy/golang-toolkit/logger"
+	"github.com/acexy/golang-toolkit/util/slice"
 	"sort"
 	"sync"
 	"time"
@@ -224,20 +225,39 @@ func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
 	for i, v := range *s.starters {
 		copied[i] = v
 	}
-	sort.Sort(&copied)
 
-	stopResult := make([]*StopResult, len(*s.starters))
-	for i, wrapper := range copied {
-		setting := wrapper.starter.Setting()
-		if setting.stopAllowAsync {
-			go func(index int, starterWrapper *starterWrapper) {
-				defer wg.Done()
-				stopResult[index] = stop(starterWrapper, setting.stopMaxWaitTime)
-			}(i, wrapper)
-		} else {
-			stopResult[i] = stop(wrapper, setting.stopMaxWaitTime)
+	sort.Sort(&copied)
+	asyncStop := slice.Filter(copied, func(item **starterWrapper) bool {
+		return (*item).starter.Setting().stopAllowAsync
+	})
+	syncStop := slice.Complement(copied, asyncStop, func(item1, item2 **starterWrapper) bool {
+		return (*item1).getStarterName() == (*item2).getStarterName()
+	})
+
+	stopResult := make([]*StopResult, 0)
+
+	var mu sync.Mutex
+	// 启动同步卸载
+	go func() {
+		for _, wrapper := range syncStop {
+			setting := wrapper.starter.Setting()
+			result := stop(wrapper, setting.stopMaxWaitTime)
+			mu.Lock()
+			stopResult = append(stopResult, result)
+			mu.Unlock()
 			wg.Done()
 		}
+	}()
+
+	for _, wrapper := range asyncStop {
+		setting := wrapper.starter.Setting()
+		go func(starterWrapper *starterWrapper) {
+			defer wg.Done()
+			result := stop(starterWrapper, setting.stopMaxWaitTime)
+			mu.Lock()
+			stopResult = append(stopResult, result)
+			mu.Unlock()
+		}(wrapper)
 	}
 	wg.Wait()
 	return stopResult, nil
