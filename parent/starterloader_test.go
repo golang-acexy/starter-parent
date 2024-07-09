@@ -40,10 +40,10 @@ type gorm struct {
 }
 
 func (g gorm) Setting() *Setting {
-	return NewSetting("gorm", 1, true, time.Second, func(instance interface{}) {
+	return NewSetting("gorm", 20, true, time.Second, func(instance interface{}) {
 		_, ok := instance.(*gorm)
 		if ok {
-			fmt.Println("init invoker")
+			fmt.Println("init invoke")
 		}
 	})
 }
@@ -62,7 +62,7 @@ type gin struct {
 }
 
 func (g gin) Setting() *Setting {
-	return NewSetting("gin", 2, true, time.Second, nil)
+	return NewSetting("gin", 0, false, time.Second, nil)
 }
 
 func (g gin) Start() (interface{}, error) {
