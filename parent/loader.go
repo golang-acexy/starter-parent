@@ -209,7 +209,7 @@ func (s *StarterLoader) StartStarter(starterName string) error {
 }
 
 // StopBySetting 按照卸载配置停止所有模块
-func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
+func (s *StarterLoader) StopBySetting(maxWaitTime ...time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if len(*s.starters) == 0 {
@@ -259,7 +259,22 @@ func (s *StarterLoader) StopBySetting() ([]*StopResult, error) {
 			mu.Unlock()
 		}(wrapper)
 	}
-	wg.Wait()
+
+	if len(maxWaitTime) > 0 {
+		allStopDone := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(allStopDone)
+		}()
+		select {
+		case <-allStopDone:
+			return stopResult, nil
+		case <-time.After(maxWaitTime[0]):
+			return nil, errors.New("stop timeout")
+		}
+	} else {
+		wg.Wait()
+	}
 	return stopResult, nil
 }
 

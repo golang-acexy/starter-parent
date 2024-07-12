@@ -111,13 +111,30 @@ func TestStartAndStopBySetting(t *testing.T) {
 	loader := NewStarterLoader(starters)
 	err := loader.Start()
 	if err != nil {
-		println(err)
+		fmt.Println(err)
 		return
 	}
 	time.Sleep(time.Second * 3)
 	result, err := loader.StopBySetting()
 	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	showStopResult(result)
+}
+
+func TestStartAndStopBySettingTimeout(t *testing.T) {
+	loader := NewStarterLoader(starters)
+	err := loader.Start()
+	if err != nil {
 		println(err)
+		return
+	}
+	time.Sleep(time.Second * 3)
+	result, err := loader.StopBySetting(time.Millisecond * 200)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 	showStopResult(result)
 }
@@ -126,7 +143,7 @@ func TestStarterControl(t *testing.T) {
 	loader := NewStarterLoader(starters)
 	err := loader.Start()
 	if err != nil {
-		println(err)
+		fmt.Println(err)
 		return
 	}
 	result, err := loader.StopStarter("gorm", time.Second)
