@@ -1,6 +1,8 @@
 module github.com/golang-acexy/starter-parent
 
-go 1.21
+go 1.21.0
+
+toolchain go1.21.5
 
 require github.com/acexy/golang-toolkit v0.0.21
 
