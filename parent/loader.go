@@ -325,14 +325,14 @@ func start(wrapper *starterWrapper) error {
 		now := time.Now().UnixMilli()
 		instance, err := starter.Start()
 		if err != nil {
-			logger.Logrus().WithError(err).Errorln("starterName:", starterName, "start failed with error:", err)
+			logger.Logrus().WithError(err).Errorln(starterName, "start failed with error:", err)
 			return err
 		}
 		if setting != nil && setting.initHandler != nil {
 			// 执行初始化方法
 			setting.initHandler(instance)
 		}
-		logger.Logrus().Traceln("starterName:", starterName, "start successful cost:", time.Now().UnixMilli()-now, "ms")
+		logger.Logrus().Traceln(starterName, "started successful cost:", time.Now().UnixMilli()-now, "ms")
 		wrapper.status = 1
 	}
 	return nil
@@ -346,12 +346,12 @@ func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	}
 	starter := wrapper.starter
 	now := time.Now().UnixMilli()
-	logger.Logrus().Traceln("starterName:", starterName, "stopping now")
+	logger.Logrus().Traceln(starterName, "stopping now")
 	gracefully, stopped, err := starter.Stop(maxWaitTime)
 	if err != nil {
-		logger.Logrus().WithError(err).Errorln("starterName:", starterName, "stop failed with error:", err)
+		logger.Logrus().WithError(err).Errorln(starterName, "stop failed with error:", err)
 	} else {
-		logger.Logrus().Traceln("starterName:", starterName, "stop successful cost:", time.Now().UnixMilli()-now, "ms")
+		logger.Logrus().Traceln(starterName, "stopped successful cost:", time.Now().UnixMilli()-now, "ms")
 	}
 	if stopped {
 		wrapper.status = -1
