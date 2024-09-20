@@ -11,6 +11,7 @@ go framework root module
 该模块用于定义和管理组件行为，当一个模块实现Starter接口后，它将可以托管给loader进行统一调度
 
 顶层定义Starter接口
+
 ```go
 type Starter interface {
 
@@ -28,51 +29,55 @@ Start() (interface{}, error)
 Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error)
 }
 ```
+
 定义组件
+
 ```go
 // redis module
 type redis struct {
 }
 
 func (r redis) Setting() *parent.Setting {
-	return parent.NewSettings("redis", 3, true, time.Second*3, nil)
+return parent.NewSettings("redis", 3, true, time.Second*3, nil)
 }
 
 func (r redis) Start() (interface{}, error) {
-	time.Sleep(time.Second)
-	return &redis{}, nil
+time.Sleep(time.Second)
+return &redis{}, nil
 }
 
 func (r redis) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	go func() {
-		defer cancelFunc()
-		time.Sleep(time.Second)
-	}()
-	select {
-	case <-time.After(maxWaitTime):
-		return false, true, errors.New("timeout")
-	case <-ctx.Done():
-		return true, true, err
-	}
+ctx, cancelFunc := context.WithCancel(context.Background())
+go func () {
+defer cancelFunc()
+time.Sleep(time.Second)
+}()
+select {
+case <-time.After(maxWaitTime):
+return false, true, errors.New("timeout")
+case <-ctx.Done():
+return true, true, err
+}
 }
 ```
+
 统一管理
+
 ```go
 func TestStartAndStop(t *testing.T) {
-	loader := parent.NewStarterLoader(starters)
-	err := loader.Start()
-	if err != nil {
-		println(err)
-		return
-	}
-	err = loader.Start() // 重复启动
+loader := parent.NewStarterLoader(starters)
+err := loader.Start()
+if err != nil {
+println(err)
+return
+}
+err = loader.Start() // 重复启动
 
-	result, err := loader.Stop(time.Second)
-	if err != nil {
-		println(err)
-	}
-	showStopResult(result)
+result, err := loader.Stop(time.Second)
+if err != nil {
+println(err)
+}
+showStopResult(result)
 }
 ```
 
@@ -80,14 +85,14 @@ func TestStartAndStop(t *testing.T) {
 
 - 启动
 
-  - 依次启动组件，反馈组件启动结果
-  - 可在主程序不停止的情况下，启动指定的组件
+    - 依次启动组件，反馈组件启动结果
+    - 可在主程序不停止的情况下，启动指定的组件
 
 - 停止
 
-  - 按照Starter加载顺序依次停止组件，反馈组件卸载结果
-  - 按照Starter卸载配置，按设置按权重依次卸载组件，反馈组件卸载结果
-  - 可在主程序不停止的情况下，停止指定的组件
+    - 按照Starter加载顺序依次停止组件，反馈组件卸载结果
+    - 按照Starter卸载配置，按设置按权重依次卸载组件，反馈组件卸载结果
+    - 可在主程序不停止的情况下，停止指定的组件
 
 ---
 
@@ -100,4 +105,5 @@ func TestStartAndStop(t *testing.T) {
  nacos  | 1        
  cron   | 10       
  redis  | 19       
- grom   | 20      
+ grom   | 20       
+ mongo  | 21       
