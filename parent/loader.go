@@ -349,7 +349,7 @@ func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	logger.Logrus().Traceln(starterName, "stopping now")
 	gracefully, stopped, err := starter.Stop(maxWaitTime)
 	if err != nil {
-		logger.Logrus().WithError(err).Errorln(starterName, "stop failed with error:", err)
+		logger.Logrus().WithError(err).Errorln(starterName, "stop failed with error", err)
 	} else {
 		logger.Logrus().Traceln(starterName, "stopped successful cost:", time.Now().UnixMilli()-now, "ms")
 	}
