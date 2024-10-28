@@ -227,10 +227,10 @@ func (s *StarterLoader) StopBySetting(maxWaitTime ...time.Duration) ([]*StopResu
 	}
 
 	sort.Sort(&copied)
-	asyncStop := coll.SliceFilter(copied, func(item **starterWrapper) bool {
+	asyncStop := coll.SliceFilter(copied, func(item *starterWrapper) bool {
 		return (*item).starter.Setting().stopAllowAsync
 	})
-	syncStop := coll.SliceComplement(copied, asyncStop, func(item1, item2 **starterWrapper) bool {
+	syncStop := coll.SliceComplement(copied, asyncStop, func(item1, item2 *starterWrapper) bool {
 		return (*item1).getStarterName() == (*item2).getStarterName()
 	})
 
