@@ -12,6 +12,13 @@ import (
 var loader *StarterLoader
 var loaderOnce sync.Once
 
+const (
+	StarterStatusStarted StarterStatus = 1
+	StarterStatusStopped               = -1
+)
+
+type StarterStatus int8
+
 type StarterLoader struct {
 	sync.Mutex
 	starters *starterWrappers
@@ -36,7 +43,7 @@ type Starter interface {
 // 包裹原始Starter做未来拓展
 type starterWrapper struct {
 	// 状态 0=未启动 1=已启动 -1=已停止
-	status  int8
+	status  StarterStatus
 	starter Starter
 }
 
@@ -75,7 +82,7 @@ func (s *starterWrappers) checkSetting() bool {
 func (s *starterWrappers) stoppedStarters() []string {
 	starterNames := make([]string, 0)
 	for _, v := range *s {
-		if v.status != 1 {
+		if v.status != StarterStatusStarted {
 			starterNames = append(starterNames, v.getStarterName())
 		}
 	}
@@ -184,7 +191,7 @@ func (s *StarterLoader) Start() error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if len(*s.starters) == 0 {
-		return errors.New("no starter")
+		return errors.New("miss starters")
 	}
 	for _, wrapper := range *s.starters {
 		if err := start(wrapper); err != nil {
@@ -318,11 +325,12 @@ func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duratio
 
 // 启动指定的模块 如果已启动则忽略
 func start(wrapper *starterWrapper) error {
-	if wrapper.status != 1 {
+	if wrapper.status != StarterStatusStarted {
 		starter := wrapper.starter
 		setting := starter.Setting()
 		starterName := wrapper.getStarterName()
-		now := time.Now().UnixMilli()
+		current := time.Now()
+		logger.Logrus().Traceln(starterName, "starting now...")
 		instance, err := starter.Start()
 		if err != nil {
 			logger.Logrus().WithError(err).Errorln(starterName, "start failed with error:", err)
@@ -332,8 +340,8 @@ func start(wrapper *starterWrapper) error {
 			// 执行初始化方法
 			setting.initHandler(instance)
 		}
-		logger.Logrus().Traceln(starterName, "started successful cost:", time.Now().UnixMilli()-now, "ms")
-		wrapper.status = 1
+		logger.Logrus().Traceln(starterName, "started successful cost:", time.Since(current))
+		wrapper.status = StarterStatusStarted
 	}
 	return nil
 }
@@ -341,20 +349,20 @@ func start(wrapper *starterWrapper) error {
 // 停止指定的模块
 func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	starterName := wrapper.getStarterName()
-	if wrapper.status != 1 {
+	if wrapper.status != StarterStatusStarted {
 		return &StopResult{StarterName: starterName, Error: errors.New("not started"), Gracefully: false}
 	}
 	starter := wrapper.starter
-	now := time.Now().UnixMilli()
-	logger.Logrus().Traceln(starterName, "stopping now")
+	current := time.Now()
+	logger.Logrus().Traceln(starterName, "stopping now...")
 	gracefully, stopped, err := starter.Stop(maxWaitTime)
 	if err != nil {
 		logger.Logrus().WithError(err).Errorln(starterName, "stop failed with error", err)
 	} else {
-		logger.Logrus().Traceln(starterName, "stopped successful cost:", time.Now().UnixMilli()-now, "ms")
+		logger.Logrus().Traceln(starterName, "stopped successful cost:", time.Since(current))
 	}
 	if stopped {
-		wrapper.status = -1
+		wrapper.status = StarterStatusStopped
 	}
 	return &StopResult{
 		StarterName: starterName,

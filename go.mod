@@ -4,7 +4,7 @@ go 1.21.0
 
 toolchain go1.21.5
 
-require github.com/acexy/golang-toolkit v0.0.31
+require github.com/acexy/golang-toolkit v0.0.32
 
 require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
