@@ -4,7 +4,6 @@ import (
 	"errors"
 	"github.com/acexy/golang-toolkit/logger"
 	"github.com/acexy/golang-toolkit/util/coll"
-	"sort"
 	"sync"
 	"time"
 )
@@ -87,22 +86,6 @@ func (s *starterWrappers) stoppedStarters() []string {
 		}
 	}
 	return starterNames
-}
-
-// 实现Sort接口
-
-func (s *starterWrappers) Len() int {
-	return len(*s)
-}
-
-func (s *starterWrappers) Swap(i, j int) {
-	(*s)[i], (*s)[j] = (*s)[j], (*s)[i]
-}
-
-func (s *starterWrappers) Less(i, j int) bool {
-	setting1 := (*s)[i].starter.Setting()
-	setting2 := (*s)[j].starter.Setting()
-	return setting1.stopPriority < setting2.stopPriority
 }
 
 // Setting 卸载模块时对应的配置
@@ -216,7 +199,7 @@ func (s *StarterLoader) StartStarter(starterName string) error {
 }
 
 // StopBySetting 按照卸载配置停止所有模块
-func (s *StarterLoader) StopBySetting(maxWaitTime ...time.Duration) ([]*StopResult, error) {
+func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if len(*s.starters) == 0 {
@@ -225,49 +208,39 @@ func (s *StarterLoader) StopBySetting(maxWaitTime ...time.Duration) ([]*StopResu
 	if !s.starters.checkSetting() {
 		return nil, errors.New("some starter has no setting")
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(*s.starters))
 
-	var copied starterWrappers = make([]*starterWrapper, len(*s.starters))
-	for i, v := range *s.starters {
-		copied[i] = v
-	}
-
-	sort.Sort(&copied)
-	asyncStop := coll.SliceFilter(copied, func(item *starterWrapper) bool {
-		return (*item).starter.Setting().stopAllowAsync
+	copied := coll.SliceCollect(*s.starters, func(item *starterWrapper) *starterWrapper {
+		return item
 	})
-	syncStop := coll.SliceComplement(copied, asyncStop, func(item1, item2 *starterWrapper) bool {
-		return (*item1).getStarterName() == (*item2).getStarterName()
+	coll.SliceSort(copied, func(e *starterWrapper) int {
+		return int(e.starter.Setting().stopPriority)
 	})
 
 	stopResult := make([]*StopResult, 0)
-
+	var wg sync.WaitGroup
+	wg.Add(len(*s.starters))
 	var mu sync.Mutex
-	// 启动同步卸载
 	go func() {
-		for _, wrapper := range syncStop {
+		coll.SliceForeachAll(copied, func(wrapper *starterWrapper) {
 			setting := wrapper.starter.Setting()
-			result := stop(wrapper, setting.stopMaxWaitTime)
-			mu.Lock()
-			stopResult = append(stopResult, result)
-			mu.Unlock()
-			wg.Done()
-		}
+			if !setting.stopAllowAsync {
+				result := stop(wrapper, setting.stopMaxWaitTime)
+				mu.Lock()
+				stopResult = append(stopResult, result)
+				wg.Done()
+				mu.Unlock()
+			} else {
+				go func(starterWrapper *starterWrapper) {
+					defer wg.Done()
+					result := stop(starterWrapper, setting.stopMaxWaitTime)
+					mu.Lock()
+					stopResult = append(stopResult, result)
+					mu.Unlock()
+				}(wrapper)
+			}
+		})
 	}()
-
-	for _, wrapper := range asyncStop {
-		setting := wrapper.starter.Setting()
-		go func(starterWrapper *starterWrapper) {
-			defer wg.Done()
-			result := stop(starterWrapper, setting.stopMaxWaitTime)
-			mu.Lock()
-			stopResult = append(stopResult, result)
-			mu.Unlock()
-		}(wrapper)
-	}
-
-	if len(maxWaitTime) > 0 {
+	if len(allMaxWaitTime) > 0 {
 		allStopDone := make(chan struct{})
 		go func() {
 			wg.Wait()
@@ -276,8 +249,8 @@ func (s *StarterLoader) StopBySetting(maxWaitTime ...time.Duration) ([]*StopResu
 		select {
 		case <-allStopDone:
 			return stopResult, nil
-		case <-time.After(maxWaitTime[0]):
-			return nil, errors.New("stop timeout")
+		case <-time.After(allMaxWaitTime[0]):
+			return stopResult, errors.New("stop the module exceeding the maximum wait time")
 		}
 	} else {
 		wg.Wait()
