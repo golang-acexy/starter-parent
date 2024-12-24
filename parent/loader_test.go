@@ -114,7 +114,9 @@ func TestStartAndStopBySetting(t *testing.T) {
 		fmt.Println(err)
 		return
 	}
+	fmt.Println("all started")
 	time.Sleep(time.Second * 3)
+	fmt.Println("stopping ...")
 	result, err := loader.StopBySetting()
 	if err != nil {
 		fmt.Println(err)
