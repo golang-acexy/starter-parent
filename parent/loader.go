@@ -9,7 +9,7 @@ import (
 )
 
 var loader *StarterLoader
-var loaderOnce sync.Once
+var once sync.Once
 
 const (
 	StarterStatusStarted StarterStatus = 1
@@ -136,7 +136,7 @@ type StopResult struct {
 
 // NewStarterLoader 创建一个模块加载器
 func NewStarterLoader(starters []Starter) *StarterLoader {
-	loaderOnce.Do(func() {
+	once.Do(func() {
 		if len(starters) == 0 {
 			loader = &StarterLoader{}
 		} else {
@@ -208,14 +208,12 @@ func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopR
 	if !s.starters.checkSetting() {
 		return nil, errors.New("some starter has no setting")
 	}
-
 	copied := coll.SliceCollect(*s.starters, func(item *starterWrapper) *starterWrapper {
 		return item
 	})
 	coll.SliceSort(copied, func(e *starterWrapper) int {
 		return int(e.starter.Setting().stopPriority)
 	})
-
 	stopResult := make([]*StopResult, 0)
 	var wg sync.WaitGroup
 	wg.Add(len(*s.starters))
@@ -232,7 +230,7 @@ func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopR
 			} else {
 				go func(starterWrapper *starterWrapper) {
 					defer wg.Done()
-					result := stop(starterWrapper, setting.stopMaxWaitTime)
+					result := stop(starterWrapper, starterWrapper.starter.Setting().stopMaxWaitTime)
 					mu.Lock()
 					stopResult = append(stopResult, result)
 					mu.Unlock()
@@ -323,7 +321,7 @@ func start(wrapper *starterWrapper) error {
 func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	starterName := wrapper.getStarterName()
 	if wrapper.status != StarterStatusStarted {
-		return &StopResult{StarterName: starterName, Error: errors.New("not started"), Gracefully: false}
+		return &StopResult{StarterName: starterName, Error: errors.New("not started")}
 	}
 	starter := wrapper.starter
 	current := time.Now()
