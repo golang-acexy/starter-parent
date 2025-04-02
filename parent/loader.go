@@ -157,15 +157,18 @@ func NewStarterLoader(starters []Starter) *StarterLoader {
 }
 
 // AddStarter 添加一个模块
-func (s *StarterLoader) AddStarter(starter Starter) {
+func (s *StarterLoader) AddStarter(starters ...Starter) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if len(*s.starters) == 0 {
 		*s.starters = make([]*starterWrapper, 0)
 	}
-	v := append(*s.starters, &starterWrapper{
-		starter: starter,
+	newStarterWrappers := coll.SliceCollect(starters, func(item Starter) *starterWrapper {
+		return &starterWrapper{
+			starter: item,
+		}
 	})
+	v := append(*s.starters, newStarterWrappers...)
 	s.starters = &v
 }
 
