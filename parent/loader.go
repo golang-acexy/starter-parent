@@ -2,10 +2,11 @@ package parent
 
 import (
 	"errors"
-	"github.com/acexy/golang-toolkit/logger"
-	"github.com/acexy/golang-toolkit/util/coll"
 	"sync"
 	"time"
+
+	"github.com/acexy/golang-toolkit/logger"
+	"github.com/acexy/golang-toolkit/util/coll"
 )
 
 var loader *StarterLoader
