@@ -2,10 +2,11 @@ package parent
 
 import (
 	"errors"
-	"github.com/acexy/golang-toolkit/logger"
-	"github.com/acexy/golang-toolkit/util/coll"
 	"sync"
 	"time"
+
+	"github.com/acexy/golang-toolkit/logger"
+	"github.com/acexy/golang-toolkit/util/coll"
 )
 
 var loader *StarterLoader
@@ -13,7 +14,7 @@ var once sync.Once
 
 const (
 	StarterStatusStarted StarterStatus = 1
-	StarterStatusStopped               = -1
+	StarterStatusStopped StarterStatus = -1
 )
 
 type StarterStatus int8
@@ -288,7 +289,7 @@ func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duratio
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter")
+		return nil, errors.New("no starter set")
 	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
