@@ -100,9 +100,9 @@ showStopResult(result)
 
  module | priority 
 --------|----------
- gin    | 0        
- grpc   | 0        
- nacos  | 1        
+ nacos  | 0        
+ gin    | 1        
+ grpc   | 1        
  cron   | 10       
  redis  | 19       
  grom   | 20       
