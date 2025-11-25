@@ -30,7 +30,7 @@ type Starter interface {
 	Setting() *Setting
 
 	// Start 模块注册方法 启动顺序按照注册的starter顺序依次启动
-	Start() (interface{}, error)
+	Start() (any, error)
 
 	// Stop 声明模块的卸载关闭方法 模块应当已阻塞的形式实现
 	// 		maxWaitSeconds 等待优雅停机的最大时间 (秒)
@@ -97,7 +97,7 @@ type Setting struct {
 	starterName string
 
 	// 组件在初始化时执行指定的初始化方法 instance为各个组件的原始实例，由自模块控制，执行时机为执行Starter.Register成功后
-	initHandler func(instance interface{})
+	initHandler func(instance any)
 
 	// 卸载时优先级，权重越小，优先级越高 (适用于starterLoader执行按设置卸载模块)
 	// 注意，相同的优先级会导致不稳定排序出现不稳定的同优先级先后顺序
@@ -113,7 +113,7 @@ type Setting struct {
 }
 
 // NewSetting 创建一个模块设置
-func NewSetting(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance interface{})) *Setting {
+func NewSetting(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance any)) *Setting {
 	return &Setting{
 		starterName:     starterName,
 		stopPriority:    stopPriority,
