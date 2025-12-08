@@ -8,78 +8,7 @@ go framework root module
 
 #### 功能说明
 
-该模块用于定义和管理组件行为，当一个模块实现Starter接口后，它将可以托管给loader进行统一调度
-
-顶层定义Starter接口
-
-```go
-type Starter interface {
-
-// Setting 模块设置
-Setting() *Setting
-
-// Start 模块注册方法 启动顺序按照注册的starter顺序依次启动
-Start() (interface{}, error)
-
-// Stop 声明模块的卸载关闭方法 模块应当已阻塞的形式实现
-// 		maxWaitSeconds 等待优雅停机的最大时间 (秒)
-// 		gracefully 	是否以优雅停机的形式关闭
-// 		stopped 是否已经停止该模块，错误的汇报将导致loader无法准确判断模块状态
-// 		err 异常
-Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error)
-}
-```
-
-定义组件
-
-```go
-// redis module
-type redis struct {
-}
-
-func (r redis) Setting() *parent.Setting {
-return parent.NewSettings("redis", 3, true, time.Second*3, nil)
-}
-
-func (r redis) Start() (interface{}, error) {
-time.Sleep(time.Second)
-return &redis{}, nil
-}
-
-func (r redis) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
-ctx, cancelFunc := context.WithCancel(context.Background())
-go func () {
-defer cancelFunc()
-time.Sleep(time.Second)
-}()
-select {
-case <-time.After(maxWaitTime):
-return false, true, errors.New("timeout")
-case <-ctx.Done():
-return true, true, err
-}
-}
-```
-
-统一管理
-
-```go
-func TestStartAndStop(t *testing.T) {
-loader := parent.NewStarterLoader(starters)
-err := loader.Start()
-if err != nil {
-println(err)
-return
-}
-err = loader.Start() // 重复启动
-
-result, err := loader.Stop(time.Second)
-if err != nil {
-println(err)
-}
-showStopResult(result)
-}
-```
+该模块用于定义和管理组件行为，当一个模块实现Starter接口后，它将可以托管给loader进行统一调度顶层定义Starter接口
 
 支持功能
 
@@ -98,12 +27,13 @@ showStopResult(result)
 
 #### 默认模块卸载权重 (值越小优先级越高)
 
- module | priority 
---------|----------
- nacos  | 0        
- gin    | 1        
- grpc   | 1        
- cron   | 10       
- redis  | 19       
- grom   | 20       
- mongo  | 21       
+ module    | priority | async 
+-----------|----------|-------
+ nacos     | 0        | false 
+ gin       | 1        | false 
+ grpc      | 1        | false 
+ websocket | 1        | false 
+ cron      | 10       | false 
+ redis     | 19       | true  
+ grom      | 20       | true  
+ mongo     | 21       | true  
