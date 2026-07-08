@@ -1,7 +1,7 @@
 package parent
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -225,7 +225,7 @@ func (s *StarterLoader) Start() error {
 	s.Mutex.Lock()
 	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return errors.New("miss starters")
+		return ErrMissStarters
 	}
 	for _, wrapper := range *s.starters {
 		if err := start(wrapper); err != nil {
@@ -241,11 +241,11 @@ func (s *StarterLoader) StartStarter(starterName string) error {
 	s.Mutex.Lock()
 	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return errors.New("no starter")
+		return ErrNoStarter
 	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
-		return errors.New("unknown starterName: " + starterName)
+		return fmt.Errorf("%w: %s", ErrUnknownStarterName, starterName)
 	}
 	return start(wrapper)
 }
@@ -258,10 +258,10 @@ func (s *StarterLoader) StopAllBySetting(allMaxWaitTime ...time.Duration) ([]*St
 	s.Mutex.Lock()
 	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter")
+		return nil, ErrNoStarter
 	}
 	if !s.starters.checkSetting() {
-		return nil, errors.New("some starter has no setting")
+		return nil, ErrSomeStarterNoSetting
 	}
 	copied := coll.SliceCollect(*s.starters, func(item *starterWrapper) *starterWrapper {
 		return item
@@ -303,7 +303,7 @@ func (s *StarterLoader) StopAllBySetting(allMaxWaitTime ...time.Duration) ([]*St
 		case <-allStopDone:
 			return stopResult, nil
 		case <-time.After(allMaxWaitTime[0]):
-			return stopResult, errors.New("stop the module exceeding the maximum wait time")
+			return stopResult, ErrStopAllTimeout
 		}
 	} else {
 		wg.Wait()
@@ -328,7 +328,7 @@ func (s *StarterLoader) StopAllByRegisteredOrder(maxWaitTime time.Duration) ([]*
 	s.Mutex.Lock()
 	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter")
+		return nil, ErrNoStarter
 	}
 	stopResult := make([]*StopResult, 0)
 	for _, wrapper := range *s.starters {
@@ -343,11 +343,11 @@ func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duratio
 	s.Mutex.Lock()
 	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter set")
+		return nil, ErrNoStarterSet
 	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
-		return nil, errors.New("unknown starterName: " + starterName)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownStarterName, starterName)
 	}
 	return stop(wrapper, maxWaitTime), nil
 }
@@ -387,7 +387,7 @@ func start(wrapper *starterWrapper) error {
 func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	starterName := wrapper.getStarterName()
 	if wrapper.status != StarterStatusStarted {
-		return &StopResult{StarterName: starterName, Error: errors.New("not started")}
+		return &StopResult{StarterName: starterName, Error: ErrStarterNotStarted}
 	}
 	starter := wrapper.starter
 	current := time.Now()
