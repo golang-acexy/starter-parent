@@ -1,39 +1,106 @@
 # starter-parent
 
-go framework root module
+`starter-parent` is the lifecycle foundation of the Golang Acexy starter/cloud ecosystem. It defines the shared `Starter` contract and owns the process-wide `StarterLoader` used to register, start, stop, and coordinate infrastructure components.
 
-用于管理符合Starter模块定义的所有组件，提供统一的启动/停止行为控制，支持主程序不退出的情况直接控制Starter状态
+## Ecosystem Role
 
----
+The ecosystem follows a Spring Boot and Spring Cloud inspired component model while keeping dependency composition explicit in Go:
 
-#### 功能说明
+- `starter-*` modules wrap one infrastructure capability.
+- `cloud-*` modules combine starters into higher-level application patterns.
+- `starter-parent` provides the lifecycle contract shared by every starter.
 
-该模块用于定义和管理组件行为，当一个模块实现Starter接口后，它将可以托管给loader进行统一调度顶层定义Starter接口
+One application process should initialize one loader. Components start in registration order and can stop by registration order or by their own shutdown settings.
 
-支持功能
+## Requirements
 
-- 启动
+- Go `1.25.8`
 
-    - 依次启动组件，反馈组件启动结果
-    - 可在主程序不停止的情况下，启动指定的组件
+## Installation
 
-- 停止
+```bash
+go get github.com/golang-acexy/starter-parent
+```
 
-    - 按照Starter加载顺序依次停止组件，反馈组件卸载结果
-    - 按照Starter卸载配置，按设置按权重依次卸载组件，反馈组件卸载结果
-    - 可在主程序不停止的情况下，停止指定的组件
+## Starter Contract
 
----
+```go
+type Starter interface {
+    Setting() *Setting
+    Start() (any, error)
+    Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error)
+}
+```
 
-#### 默认模块卸载权重 (值越小优先级越高)
+- `Setting` defines the component name, restart policy, stop priority, asynchronous-stop policy, stop timeout, and initialization callback.
+- `Start` initializes the component and returns its raw instance. The loader invokes the configured initialization callback after a successful start.
+- `Stop` performs component-owned graceful shutdown and accurately reports whether the component stopped.
 
- module    | priority | async 
------------|----------|-------
- nacos     | 0        | false 
- gin       | 1        | false 
- grpc      | 1        | false 
- websocket | 1        | false 
- cron      | 10       | false 
- redis     | 19       | true  
- grom      | 20       | true  
- mongo     | 21       | true  
+## Register and Start Components
+
+```go
+loader := parent.InitStarterLoader([]parent.Starter{
+    gormStarter,
+    redisStarter,
+    ginStarter,
+})
+
+if err := loader.Start(); err != nil {
+    panic(err)
+}
+```
+
+`InitStarterLoader` initializes or returns the process-wide loader. Only the first call registers its input. Use `AddStarter` to append components later:
+
+```go
+loader.AddStarter(cronStarter)
+if err := loader.StartStarter("Cron-Starter"); err != nil {
+    panic(err)
+}
+```
+
+## Lifecycle Ordering
+
+`Start` visits components in registration order. Register dependencies before consumers—for example, database and cache starters before HTTP or gRPC servers.
+
+Two coordinated shutdown strategies are available:
+
+- `StopAllByRegisteredOrder(maxWaitTime)` stops components in registration order and ignores individual stop settings.
+- `StopAllBySetting(allMaxWaitTime...)` sorts by `Setting.StopPriority()`, supports asynchronous stops, and optionally limits the total wait time.
+
+Default standard-starter settings are:
+
+| Module | Restart | Stop priority | Async stop |
+| --- | :---: | ---: | :---: |
+| Nacos | false | 0 | false |
+| Gin | false | 1 | false |
+| gRPC | false | 1 | false |
+| WebSocket | true | 1 | false |
+| Cron | false | 10 | false |
+| Redis | false | 19 | true |
+| GORM | false | 20 | true |
+| MongoDB | false | 21 | true |
+
+## Restart Policy
+
+A component starts normally when it has never run. Starting it again while it is already running is idempotent at the loader level.
+
+After a component has stopped successfully, another `Start` or `StartStarter` call is a restart. The loader permits that transition only when `Setting.AllowRestart()` is true; otherwise it returns `ErrStarterRestartDisabled` without calling the component's `Start` method. Among the standard starters, only `starter-websocket` currently enables restart.
+
+## Common API
+
+- `InitStarterLoader(starters)` initializes or returns the global loader.
+- `AddStarter(starters...)` appends components to the registration list.
+- `Start()` starts all components that are not currently running.
+- `StartStarter(name)` starts one named component and enforces its restart policy.
+- `StopStarter(name, maxWaitTime)` stops one named component.
+- `StopAllByRegisteredOrder(maxWaitTime)` stops all components in registration order.
+- `StopAllBySetting(...)` stops all components according to their settings.
+- `StoppedStarters()` returns components not currently in the started state.
+
+## Design Notes
+
+- The loader is a process-wide singleton; repeated initialization does not replace its registered components.
+- A starter owns its resource initialization and shutdown details. The loader coordinates state and order but does not close raw resources itself.
+- `Stop` implementations must report `stopped` correctly. The loader only marks a component stopped when that value is true.
+- Use explicit errors from `parent/error.go` to distinguish missing registration, unknown component names, invalid restart transitions, and shutdown timeouts.

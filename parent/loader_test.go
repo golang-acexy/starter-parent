@@ -1,159 +1,256 @@
 package parent
 
 import (
-	"context"
 	"errors"
-	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
 
-// redis module
-type redis struct {
+type testStarter struct {
+	name          string
+	allowRestart  bool
+	stopPriority  uint
+	stopAllowAsync bool
+	stopMaxWait   time.Duration
+	initCalled    bool
+	startCount    int
+	stopCount     int
+	startOrder    *[]string
+	stopOrder     *[]string
 }
 
-func (r redis) Setting() *Setting {
-	return NewSetting("", 3, true, time.Second*3, nil)
-}
-
-func (r redis) Start() (interface{}, error) {
-	time.Sleep(time.Second)
-	return &redis{}, nil
-}
-
-func (r redis) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	go func() {
-		defer cancelFunc()
-		time.Sleep(time.Second)
-	}()
-	select {
-	case <-time.After(maxWaitTime):
-		return false, true, errors.New("timeout")
-	case <-ctx.Done():
-		return true, true, err
+func newTestStarter(name string, stopPriority uint) *testStarter {
+	return &testStarter{
+		name:         name,
+		stopPriority: stopPriority,
+		stopMaxWait:  time.Second,
 	}
 }
 
-// gorm module
-type gorm struct {
-}
-
-func (g gorm) Setting() *Setting {
-	return NewSetting("gorm", 20, true, time.Second, func(instance interface{}) {
-		_, ok := instance.(*gorm)
-		if ok {
-			fmt.Println("init invoke")
-		}
+func (s *testStarter) Setting() *Setting {
+	return NewSetting(s.name, s.allowRestart, s.stopPriority, s.stopAllowAsync, s.stopMaxWait, func(instance any) {
+		s.initCalled = instance == s
 	})
 }
 
-func (g gorm) Start() (interface{}, error) {
-	return &gorm{}, nil
+func (s *testStarter) Start() (any, error) {
+	s.startCount++
+	if s.startOrder != nil {
+		*s.startOrder = append(*s.startOrder, s.name)
+	}
+	return s, nil
 }
 
-func (g gorm) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
-	time.Sleep(time.Second)
-	return true, true, err
+func (s *testStarter) Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error) {
+	s.stopCount++
+	if s.stopOrder != nil {
+		*s.stopOrder = append(*s.stopOrder, s.name)
+	}
+	return true, true, nil
 }
 
-// gin module
-type gin struct {
+func resetTestLoader() {
+	loader = nil
+	once = sync.Once{}
 }
 
-func (g gin) Setting() *Setting {
-	return NewSetting("gin", 0, false, time.Second, nil)
-}
-
-func (g gin) Start() (interface{}, error) {
-	return &gin{}, nil
-}
-
-func (g gin) Stop(maxWaitTime time.Duration) (gracefully bool, stopped bool, err error) {
-	return false, false, errors.New("something error")
-}
-
-var starters []Starter
-
-func init() {
-	starters = []Starter{
-		&redis{},
-		&gorm{},
-		&gin{},
+func assertStringSliceEqual(t *testing.T, actual, expected []string) {
+	t.Helper()
+	if len(actual) != len(expected) {
+		t.Fatalf("slice length mismatch, actual=%v expected=%v", actual, expected)
+	}
+	for i := range actual {
+		if actual[i] != expected[i] {
+			t.Fatalf("slice item mismatch, actual=%v expected=%v", actual, expected)
+		}
 	}
 }
 
-func showStopResult(result []*StopResult) {
-	for _, v := range result {
-		fmt.Printf("%+v\n", v)
+func assertContains(t *testing.T, actual []string, expected string) {
+	t.Helper()
+	for _, item := range actual {
+		if item == expected {
+			return
+		}
+	}
+	t.Fatalf("expected %q in %v", expected, actual)
+}
+
+func TestInitStarterLoaderWithEmptyStartersIsSafe(t *testing.T) {
+	resetTestLoader()
+
+	loader := InitStarterLoader(nil)
+	if loader == nil {
+		t.Fatal("loader should not be nil")
+	}
+	if err := loader.Start(); err == nil {
+		t.Fatal("empty loader should return error on Start")
+	}
+
+	starter := newTestStarter("dynamic", 1)
+	loader.AddStarter(starter)
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start dynamic starter failed: %v", err)
+	}
+	if starter.startCount != 1 {
+		t.Fatalf("dynamic starter start count mismatch: %d", starter.startCount)
 	}
 }
 
-// Test
+func TestStartUsesRegisteredOrderAndIsIdempotent(t *testing.T) {
+	resetTestLoader()
 
-func TestStartAndStop(t *testing.T) {
-	loader := NewStarterLoader(starters)
-	err := loader.Start()
+	startOrder := make([]string, 0)
+	first := newTestStarter("first", 1)
+	second := newTestStarter("second", 2)
+	first.startOrder = &startOrder
+	second.startOrder = &startOrder
+
+	loader := InitStarterLoader([]Starter{first, second})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if err := loader.Start(); err != nil {
+		t.Fatalf("repeat start failed: %v", err)
+	}
+
+	assertStringSliceEqual(t, startOrder, []string{"first", "second"})
+	if !first.initCalled || !second.initCalled {
+		t.Fatal("init handler should be called after successful start")
+	}
+}
+
+func TestStopAllByRegisteredOrder(t *testing.T) {
+	resetTestLoader()
+
+	stopOrder := make([]string, 0)
+	first := newTestStarter("first", 1)
+	second := newTestStarter("second", 2)
+	first.stopOrder = &stopOrder
+	second.stopOrder = &stopOrder
+
+	loader := InitStarterLoader([]Starter{first, second})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	results, err := loader.StopAllByRegisteredOrder(time.Second)
 	if err != nil {
-		println(err)
-		return
+		t.Fatalf("stop failed: %v", err)
 	}
-	err = loader.Start() // 重复启动
 
-	result, err := loader.Stop(time.Second)
-	if err != nil {
-		println(err)
+	assertStringSliceEqual(t, stopOrder, []string{"first", "second"})
+	if len(results) != 2 {
+		t.Fatalf("stop result count mismatch: %d", len(results))
 	}
-	showStopResult(result)
 }
 
-func TestStartAndStopBySetting(t *testing.T) {
-	loader := NewStarterLoader(starters)
-	err := loader.Start()
-	if err != nil {
-		fmt.Println(err)
-		return
+func TestStopAllBySettingUsesStopPriority(t *testing.T) {
+	resetTestLoader()
+
+	stopOrder := make([]string, 0)
+	high := newTestStarter("high", 20)
+	low := newTestStarter("low", 0)
+	middle := newTestStarter("middle", 10)
+	high.stopOrder = &stopOrder
+	low.stopOrder = &stopOrder
+	middle.stopOrder = &stopOrder
+
+	loader := InitStarterLoader([]Starter{high, low, middle})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
 	}
-	fmt.Println("all started")
-	time.Sleep(time.Second * 3)
-	fmt.Println("stopping ...")
-	result, err := loader.StopBySetting()
+	results, err := loader.StopAllBySetting()
 	if err != nil {
-		fmt.Println(err)
-		return
+		t.Fatalf("stop by setting failed: %v", err)
 	}
-	showStopResult(result)
+
+	assertStringSliceEqual(t, stopOrder, []string{"low", "middle", "high"})
+	if len(results) != 3 {
+		t.Fatalf("stop result count mismatch: %d", len(results))
+	}
 }
 
-func TestStartAndStopBySettingTimeout(t *testing.T) {
-	loader := NewStarterLoader(starters)
-	err := loader.Start()
-	if err != nil {
-		println(err)
-		return
+func TestStopStarterAndStoppedStarters(t *testing.T) {
+	resetTestLoader()
+
+	first := newTestStarter("first", 1)
+	second := newTestStarter("second", 2)
+
+	loader := InitStarterLoader([]Starter{first, second})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
 	}
-	time.Sleep(time.Second * 3)
-	result, err := loader.StopBySetting(time.Millisecond * 200)
+
+	result, err := loader.StopStarter("second", time.Second)
 	if err != nil {
-		fmt.Println(err)
-		return
+		t.Fatalf("stop starter failed: %v", err)
 	}
-	showStopResult(result)
+	if result.StarterName != "second" || !result.Stopped || !result.Gracefully {
+		t.Fatalf("unexpected stop result: %+v", result)
+	}
+	assertContains(t, loader.StoppedStarters(), "second")
 }
 
-func TestStarterControl(t *testing.T) {
-	loader := NewStarterLoader(starters)
-	err := loader.Start()
-	if err != nil {
-		fmt.Println(err)
-		return
+func TestStartStarterRejectsRestartWhenDisabled(t *testing.T) {
+	resetTestLoader()
+
+	starter := newTestStarter("disabled", 1)
+	loader := InitStarterLoader([]Starter{starter})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
 	}
-	result, err := loader.StopStarter("gorm", time.Second)
-	if err != nil {
-		println(err)
+	if _, err := loader.StopStarter("disabled", time.Second); err != nil {
+		t.Fatalf("stop failed: %v", err)
 	}
-	showStopResult([]*StopResult{result})
-	fmt.Println(loader.StoppedStarters())
-	_ = loader.Start()
-	fmt.Println(loader.StoppedStarters())
+	if err := loader.StartStarter("disabled"); !errors.Is(err, ErrStarterRestartDisabled) {
+		t.Fatalf("expected restart disabled error, got: %v", err)
+	}
+	if starter.startCount != 1 {
+		t.Fatalf("disabled starter should not restart, start count: %d", starter.startCount)
+	}
+}
+
+func TestStartStarterAllowsRestartWhenEnabled(t *testing.T) {
+	resetTestLoader()
+
+	starter := newTestStarter("enabled", 1)
+	starter.allowRestart = true
+	loader := InitStarterLoader([]Starter{starter})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if _, err := loader.StopStarter("enabled", time.Second); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	if err := loader.StartStarter("enabled"); err != nil {
+		t.Fatalf("restart failed: %v", err)
+	}
+	if starter.startCount != 2 {
+		t.Fatalf("enabled starter start count mismatch: %d", starter.startCount)
+	}
+}
+
+func TestSettingGetters(t *testing.T) {
+	handler := func(instance any) {}
+	setting := NewSetting("demo", false, 10, true, time.Second, handler)
+
+	if setting.StarterName() != "demo" {
+		t.Fatalf("starter name mismatch: %s", setting.StarterName())
+	}
+	if setting.AllowRestart() {
+		t.Fatal("allow restart should be false")
+	}
+	if setting.StopPriority() != 10 {
+		t.Fatalf("stop priority mismatch: %d", setting.StopPriority())
+	}
+	if !setting.StopAllowAsync() {
+		t.Fatal("stop allow async should be true")
+	}
+	if setting.StopMaxWaitTime() != time.Second {
+		t.Fatalf("stop max wait time mismatch: %s", setting.StopMaxWaitTime())
+	}
+	if setting.InitHandler() == nil {
+		t.Fatal("init handler should not be nil")
+	}
 }

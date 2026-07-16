@@ -1,7 +1,7 @@
 package parent
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,17 +13,24 @@ var loader *StarterLoader
 var once sync.Once
 
 const (
+	// StarterStatusStarted 表示组件已经成功启动。
 	StarterStatusStarted StarterStatus = 1
+	// StarterStatusStopped 表示组件已经停止或尚未启动。
 	StarterStatusStopped StarterStatus = -1
 )
 
+// StarterStatus 表示组件在Loader中的生命周期状态。
 type StarterStatus int8
 
+// StarterLoader 负责统一管理所有Starter组件的注册、启动和停止。
+//
+// 同一进程中Loader应保持单例，组件按注册顺序启动，可按配置顺序停止。
 type StarterLoader struct {
 	sync.Mutex
 	starters *starterWrappers
 }
 
+// Starter 定义可被StarterLoader统一管理的组件生命周期接口。
 type Starter interface {
 
 	// Setting 模块设置
@@ -96,6 +103,9 @@ type Setting struct {
 	// 模块名称
 	starterName string
 
+	// 是否允许模块成功停止后再次启动
+	allowRestart bool
+
 	// 组件在初始化时执行指定的初始化方法 instance为各个组件的原始实例，由自模块控制，执行时机为执行Starter.Register成功后
 	initHandler func(instance any)
 
@@ -113,14 +123,60 @@ type Setting struct {
 }
 
 // NewSetting 创建一个模块设置
-func NewSetting(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance any)) *Setting {
+func NewSetting(starterName string, allowRestart bool, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance any)) *Setting {
 	return &Setting{
 		starterName:     starterName,
+		allowRestart:    allowRestart,
 		stopPriority:    stopPriority,
 		stopAllowAsync:  stopAllowAsync,
 		stopMaxWaitTime: stopMaxWaitTime,
 		initHandler:     initHandler,
 	}
+}
+
+// AllowRestart 返回模块成功停止后是否允许再次启动。
+func (s *Setting) AllowRestart() bool {
+	return s != nil && s.allowRestart
+}
+
+// StarterName 返回模块名称。
+func (s *Setting) StarterName() string {
+	if s == nil {
+		return ""
+	}
+	return s.starterName
+}
+
+// InitHandler 返回组件启动成功后执行的初始化函数。
+func (s *Setting) InitHandler() func(instance any) {
+	if s == nil {
+		return nil
+	}
+	return s.initHandler
+}
+
+// StopPriority 返回模块停止优先级，值越小越优先停止。
+func (s *Setting) StopPriority() uint {
+	if s == nil {
+		return 0
+	}
+	return s.stopPriority
+}
+
+// StopAllowAsync 返回模块是否允许异步停止。
+func (s *Setting) StopAllowAsync() bool {
+	if s == nil {
+		return false
+	}
+	return s.stopAllowAsync
+}
+
+// StopMaxWaitTime 返回模块优雅停止的最大等待时间。
+func (s *Setting) StopMaxWaitTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return s.stopMaxWaitTime
 }
 
 // StopResult 模块停止卸载结果
@@ -135,32 +191,31 @@ type StopResult struct {
 	Gracefully bool
 }
 
-// NewStarterLoader 创建一个模块加载器
-func NewStarterLoader(starters []Starter) *StarterLoader {
+// InitStarterLoader 初始化或返回全局唯一的模块加载器。
+//
+// 首次调用时会注册传入的starters；后续需要动态增加组件时应使用AddStarter。
+func InitStarterLoader(starters []Starter) *StarterLoader {
 	once.Do(func() {
-		if len(starters) == 0 {
-			loader = &StarterLoader{}
-		} else {
-			if loader == nil {
-				wrappers := make([]*starterWrapper, len(starters))
-				for i, v := range starters {
-					wrappers[i] = &starterWrapper{
-						starter: v,
-					}
-				}
-				loader = &StarterLoader{
-					starters: (*starterWrappers)(&wrappers),
-				}
-			}
+		wrappers := make(starterWrappers, 0, len(starters))
+		for _, v := range starters {
+			wrappers = append(wrappers, &starterWrapper{
+				starter: v,
+			})
+		}
+		loader = &StarterLoader{
+			starters: &wrappers,
 		}
 	})
 	return loader
 }
 
-// AddStarter 添加一个模块
+// AddStarter 动态添加一个或多个Starter组件。
+//
+// 新增组件会追加到注册列表末尾，因此启动顺序仍遵循先注册先启动。
 func (s *StarterLoader) AddStarter(starters ...Starter) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
 		*s.starters = make([]*starterWrapper, 0)
 	}
@@ -173,12 +228,13 @@ func (s *StarterLoader) AddStarter(starters ...Starter) {
 	s.starters = &v
 }
 
-// Start 启动所有未启动的模块 按starter加载顺序
+// Start 按注册顺序启动所有未启动的Starter组件。
 func (s *StarterLoader) Start() error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return errors.New("miss starters")
+		return ErrMissStarters
 	}
 	for _, wrapper := range *s.starters {
 		if err := start(wrapper); err != nil {
@@ -188,29 +244,33 @@ func (s *StarterLoader) Start() error {
 	return nil
 }
 
-// StartStarter 启动指定未启动的模块
+// StartStarter 启动指定名称且尚未启动的Starter组件。
 func (s *StarterLoader) StartStarter(starterName string) error {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return errors.New("no starter")
+		return ErrNoStarter
 	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
-		return errors.New("unknown starterName: " + starterName)
+		return fmt.Errorf("%w: %s", ErrUnknownStarterName, starterName)
 	}
 	return start(wrapper)
 }
 
-// StopBySetting 按照卸载配置停止所有模块
-func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopResult, error) {
+// StopAllBySetting 按Setting中的停止配置停止所有Starter组件。
+//
+// 停止优先级由Setting.stopPriority决定，值越小越优先停止。
+func (s *StarterLoader) StopAllBySetting(allMaxWaitTime ...time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter")
+		return nil, ErrNoStarter
 	}
 	if !s.starters.checkSetting() {
-		return nil, errors.New("some starter has no setting")
+		return nil, ErrSomeStarterNoSetting
 	}
 	copied := coll.SliceCollect(*s.starters, func(item *starterWrapper) *starterWrapper {
 		return item
@@ -223,7 +283,7 @@ func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopR
 	wg.Add(len(*s.starters))
 	var mu sync.Mutex
 	go func() {
-		coll.SliceForeachAll(copied, func(wrapper *starterWrapper) {
+		coll.SliceForEachAll(copied, func(wrapper *starterWrapper) {
 			setting := wrapper.starter.Setting()
 			if !setting.stopAllowAsync {
 				result := stop(wrapper, setting.stopMaxWaitTime)
@@ -252,7 +312,7 @@ func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopR
 		case <-allStopDone:
 			return stopResult, nil
 		case <-time.After(allMaxWaitTime[0]):
-			return stopResult, errors.New("stop the module exceeding the maximum wait time")
+			return stopResult, ErrStopAllTimeout
 		}
 	} else {
 		wg.Wait()
@@ -260,22 +320,24 @@ func (s *StarterLoader) StopBySetting(allMaxWaitTime ...time.Duration) ([]*StopR
 	return stopResult, nil
 }
 
-// StoppedStarters 未启动的模块名
+// StoppedStarters 返回所有未处于Started状态的Starter组件名称。
 func (s *StarterLoader) StoppedStarters() []string {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
 		return nil
 	}
 	return s.starters.stoppedStarters()
 }
 
-// Stop 按starter加载顺序停止所有模块 忽略卸载配置
-func (s *StarterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
+// StopAllByRegisteredOrder 按注册顺序停止所有Starter组件，并忽略Setting中的停止配置。
+func (s *StarterLoader) StopAllByRegisteredOrder(maxWaitTime time.Duration) ([]*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter")
+		return nil, ErrNoStarter
 	}
 	stopResult := make([]*StopResult, 0)
 	for _, wrapper := range *s.starters {
@@ -284,18 +346,27 @@ func (s *StarterLoader) Stop(maxWaitTime time.Duration) ([]*StopResult, error) {
 	return stopResult, nil
 }
 
-// StopStarter 停止指定的模块
+// StopStarter 停止指定名称的Starter组件。
 func (s *StarterLoader) StopStarter(starterName string, maxWaitTime time.Duration) (*StopResult, error) {
 	defer s.Mutex.Unlock()
 	s.Mutex.Lock()
+	s.ensureStarters()
 	if len(*s.starters) == 0 {
-		return nil, errors.New("no starter set")
+		return nil, ErrNoStarterSet
 	}
 	wrapper := s.starters.find(starterName)
 	if wrapper == nil {
-		return nil, errors.New("unknown starterName: " + starterName)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownStarterName, starterName)
 	}
 	return stop(wrapper, maxWaitTime), nil
+}
+
+// ensureStarters 确保Loader内部列表已初始化，避免空Loader使用时发生panic。
+func (s *StarterLoader) ensureStarters() {
+	if s.starters == nil {
+		wrappers := make(starterWrappers, 0)
+		s.starters = &wrappers
+	}
 }
 
 // 启动指定的模块 如果已启动则忽略
@@ -304,6 +375,9 @@ func start(wrapper *starterWrapper) error {
 		starter := wrapper.starter
 		setting := starter.Setting()
 		starterName := wrapper.getStarterName()
+		if wrapper.status == StarterStatusStopped && (setting == nil || !setting.allowRestart) {
+			return fmt.Errorf("%w: %s", ErrStarterRestartDisabled, starterName)
+		}
 		current := time.Now()
 		logger.Logrus().Traceln(starterName, "starting now...")
 		instance, err := starter.Start()
@@ -325,7 +399,7 @@ func start(wrapper *starterWrapper) error {
 func stop(wrapper *starterWrapper, maxWaitTime time.Duration) *StopResult {
 	starterName := wrapper.getStarterName()
 	if wrapper.status != StarterStatusStarted {
-		return &StopResult{StarterName: starterName, Error: errors.New("not started")}
+		return &StopResult{StarterName: starterName, Error: ErrStarterNotStarted}
 	}
 	starter := wrapper.starter
 	current := time.Now()
