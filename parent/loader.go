@@ -103,6 +103,9 @@ type Setting struct {
 	// 模块名称
 	starterName string
 
+	// 是否允许模块成功停止后再次启动
+	allowRestart bool
+
 	// 组件在初始化时执行指定的初始化方法 instance为各个组件的原始实例，由自模块控制，执行时机为执行Starter.Register成功后
 	initHandler func(instance any)
 
@@ -120,14 +123,20 @@ type Setting struct {
 }
 
 // NewSetting 创建一个模块设置
-func NewSetting(starterName string, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance any)) *Setting {
+func NewSetting(starterName string, allowRestart bool, stopPriority uint, stopAllowAsync bool, stopMaxWaitTime time.Duration, initHandler func(instance any)) *Setting {
 	return &Setting{
 		starterName:     starterName,
+		allowRestart:    allowRestart,
 		stopPriority:    stopPriority,
 		stopAllowAsync:  stopAllowAsync,
 		stopMaxWaitTime: stopMaxWaitTime,
 		initHandler:     initHandler,
 	}
+}
+
+// AllowRestart 返回模块成功停止后是否允许再次启动。
+func (s *Setting) AllowRestart() bool {
+	return s != nil && s.allowRestart
 }
 
 // StarterName 返回模块名称。
@@ -366,6 +375,9 @@ func start(wrapper *starterWrapper) error {
 		starter := wrapper.starter
 		setting := starter.Setting()
 		starterName := wrapper.getStarterName()
+		if wrapper.status == StarterStatusStopped && (setting == nil || !setting.allowRestart) {
+			return fmt.Errorf("%w: %s", ErrStarterRestartDisabled, starterName)
+		}
 		current := time.Now()
 		logger.Logrus().Traceln(starterName, "starting now...")
 		instance, err := starter.Start()

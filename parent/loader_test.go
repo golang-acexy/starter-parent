@@ -1,6 +1,7 @@
 package parent
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 
 type testStarter struct {
 	name          string
+	allowRestart  bool
 	stopPriority  uint
 	stopAllowAsync bool
 	stopMaxWait   time.Duration
@@ -27,7 +29,7 @@ func newTestStarter(name string, stopPriority uint) *testStarter {
 }
 
 func (s *testStarter) Setting() *Setting {
-	return NewSetting(s.name, s.stopPriority, s.stopAllowAsync, s.stopMaxWait, func(instance any) {
+	return NewSetting(s.name, s.allowRestart, s.stopPriority, s.stopAllowAsync, s.stopMaxWait, func(instance any) {
 		s.initCalled = instance == s
 	})
 }
@@ -190,12 +192,54 @@ func TestStopStarterAndStoppedStarters(t *testing.T) {
 	assertContains(t, loader.StoppedStarters(), "second")
 }
 
+func TestStartStarterRejectsRestartWhenDisabled(t *testing.T) {
+	resetTestLoader()
+
+	starter := newTestStarter("disabled", 1)
+	loader := InitStarterLoader([]Starter{starter})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if _, err := loader.StopStarter("disabled", time.Second); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	if err := loader.StartStarter("disabled"); !errors.Is(err, ErrStarterRestartDisabled) {
+		t.Fatalf("expected restart disabled error, got: %v", err)
+	}
+	if starter.startCount != 1 {
+		t.Fatalf("disabled starter should not restart, start count: %d", starter.startCount)
+	}
+}
+
+func TestStartStarterAllowsRestartWhenEnabled(t *testing.T) {
+	resetTestLoader()
+
+	starter := newTestStarter("enabled", 1)
+	starter.allowRestart = true
+	loader := InitStarterLoader([]Starter{starter})
+	if err := loader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if _, err := loader.StopStarter("enabled", time.Second); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	if err := loader.StartStarter("enabled"); err != nil {
+		t.Fatalf("restart failed: %v", err)
+	}
+	if starter.startCount != 2 {
+		t.Fatalf("enabled starter start count mismatch: %d", starter.startCount)
+	}
+}
+
 func TestSettingGetters(t *testing.T) {
 	handler := func(instance any) {}
-	setting := NewSetting("demo", 10, true, time.Second, handler)
+	setting := NewSetting("demo", false, 10, true, time.Second, handler)
 
 	if setting.StarterName() != "demo" {
 		t.Fatalf("starter name mismatch: %s", setting.StarterName())
+	}
+	if setting.AllowRestart() {
+		t.Fatal("allow restart should be false")
 	}
 	if setting.StopPriority() != 10 {
 		t.Fatalf("stop priority mismatch: %d", setting.StopPriority())

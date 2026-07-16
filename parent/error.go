@@ -10,4 +10,5 @@ var (
 	ErrSomeStarterNoSetting   = errors.New("some starter has no setting")
 	ErrStopAllTimeout         = errors.New("stop the module exceeding the maximum wait time")
 	ErrStarterNotStarted      = errors.New("not started")
+	ErrStarterRestartDisabled = errors.New("starter restart disabled")
 )
