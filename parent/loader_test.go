@@ -5,19 +5,45 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/acexy/golang-toolkit/util/coll"
 )
 
 type testStarter struct {
-	name          string
-	allowRestart  bool
-	stopPriority  uint
+	name           string
+	allowRestart   bool
+	stopPriority   uint
 	stopAllowAsync bool
-	stopMaxWait   time.Duration
-	initCalled    bool
-	startCount    int
-	stopCount     int
-	startOrder    *[]string
-	stopOrder     *[]string
+	stopMaxWait    time.Duration
+	initCalled     bool
+	startCount     int
+	stopCount      int
+	startOrder     *[]string
+	stopOrder      *[]string
+}
+
+type callbackStarter struct {
+	setting *Setting
+	start   func()
+	stop    func()
+}
+
+func (s *callbackStarter) Setting() *Setting {
+	return s.setting
+}
+
+func (s *callbackStarter) Start() (any, error) {
+	if s.start != nil {
+		s.start()
+	}
+	return s, nil
+}
+
+func (s *callbackStarter) Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error) {
+	if s.stop != nil {
+		s.stop()
+	}
+	return true, true, nil
 }
 
 func newTestStarter(name string, stopPriority uint) *testStarter {
@@ -69,10 +95,8 @@ func assertStringSliceEqual(t *testing.T, actual, expected []string) {
 
 func assertContains(t *testing.T, actual []string, expected string) {
 	t.Helper()
-	for _, item := range actual {
-		if item == expected {
-			return
-		}
+	if coll.SliceContains(actual, expected) {
+		return
 	}
 	t.Fatalf("expected %q in %v", expected, actual)
 }
@@ -252,5 +276,161 @@ func TestSettingGetters(t *testing.T) {
 	}
 	if setting.InitHandler() == nil {
 		t.Fatal("init handler should not be nil")
+	}
+}
+
+func TestLifecycleCallbacksCanCallLoader(t *testing.T) {
+	resetTestLoader()
+
+	var currentLoader *StarterLoader
+	starter := &callbackStarter{
+		setting: NewSetting("reentrant", false, 1, false, time.Second, nil),
+	}
+	starter.start = func() {
+		currentLoader.AddStarter(newTestStarter("dynamic", 2))
+	}
+	starter.stop = func() {
+		currentLoader.StoppedStarters()
+	}
+	currentLoader = InitStarterLoader([]Starter{starter})
+
+	startDone := make(chan error, 1)
+	go func() {
+		startDone <- currentLoader.Start()
+	}()
+	select {
+	case err := <-startDone:
+		if err != nil {
+			t.Fatalf("reentrant start failed: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reentrant start deadlocked")
+	}
+
+	stopDone := make(chan error, 1)
+	go func() {
+		_, err := currentLoader.StopStarter("reentrant", time.Second)
+		stopDone <- err
+	}()
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("reentrant stop failed: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reentrant stop deadlocked")
+	}
+}
+
+func TestStopAllBySettingTimeoutReturnsStableSnapshot(t *testing.T) {
+	resetTestLoader()
+
+	releaseStop := make(chan struct{})
+	stopFinished := make(chan struct{})
+	starter := &callbackStarter{
+		setting: NewSetting("async", false, 1, true, time.Second, nil),
+		stop: func() {
+			<-releaseStop
+			close(stopFinished)
+		},
+	}
+	currentLoader := InitStarterLoader([]Starter{starter})
+	if err := currentLoader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	results, err := currentLoader.StopAllBySetting(10 * time.Millisecond)
+	if !errors.Is(err, ErrStopAllTimeout) {
+		t.Fatalf("expected stop timeout, got: %v", err)
+	}
+	if len(results) != 1 || results[0] != nil {
+		t.Fatalf("unexpected timeout snapshot: %+v", results)
+	}
+
+	close(releaseStop)
+	select {
+	case <-stopFinished:
+	case <-time.After(time.Second):
+		t.Fatal("background stop did not finish")
+	}
+	if results[0] != nil {
+		t.Fatalf("returned snapshot changed after timeout: %+v", results)
+	}
+}
+
+func TestStopAllBySettingKeepsPriorityResultOrderForAsyncStops(t *testing.T) {
+	resetTestLoader()
+
+	releaseFirst := make(chan struct{})
+	secondFinished := make(chan struct{})
+	first := &callbackStarter{
+		setting: NewSetting("first", false, 1, true, time.Second, nil),
+		stop: func() {
+			<-releaseFirst
+		},
+	}
+	second := &callbackStarter{
+		setting: NewSetting("second", false, 2, true, time.Second, nil),
+		stop: func() {
+			close(secondFinished)
+		},
+	}
+	currentLoader := InitStarterLoader([]Starter{second, first})
+	if err := currentLoader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	type stopOutcome struct {
+		results []*StopResult
+		err     error
+	}
+	stopDone := make(chan stopOutcome, 1)
+	go func() {
+		results, err := currentLoader.StopAllBySetting()
+		stopDone <- stopOutcome{results: results, err: err}
+	}()
+	select {
+	case <-secondFinished:
+	case <-time.After(time.Second):
+		t.Fatal("second asynchronous stop did not finish")
+	}
+	close(releaseFirst)
+	outcome := <-stopDone
+	if outcome.err != nil {
+		t.Fatalf("stop by setting failed: %v", outcome.err)
+	}
+	if len(outcome.results) != 2 || outcome.results[0].StarterName != "first" || outcome.results[1].StarterName != "second" {
+		t.Fatalf("unexpected result order: %+v", outcome.results)
+	}
+}
+
+func TestStarterInputValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		starters []Starter
+		expected error
+	}{
+		{name: "nil starter", starters: []Starter{nil}, expected: ErrNilStarter},
+		{name: "typed nil starter", starters: []Starter{(*testStarter)(nil)}, expected: ErrNilStarter},
+		{name: "missing setting", starters: []Starter{&callbackStarter{}}, expected: ErrSomeStarterNoSetting},
+		{name: "empty name", starters: []Starter{&callbackStarter{setting: NewSetting("", false, 1, false, time.Second, nil)}}, expected: ErrEmptyStarterName},
+		{
+			name: "duplicate name",
+			starters: []Starter{
+				newTestStarter("duplicate", 1),
+				newTestStarter("duplicate", 2),
+			},
+			expected: ErrDuplicateStarterName,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resetTestLoader()
+			currentLoader := InitStarterLoader(test.starters)
+			if err := currentLoader.Start(); !errors.Is(err, test.expected) {
+				t.Fatalf("expected %v, got: %v", test.expected, err)
+			}
+		})
 	}
 }

@@ -14,7 +14,7 @@ One application process should initialize one loader. Components start in regist
 
 ## Requirements
 
-- Go `1.25.8`
+- Go `1.26.7`
 
 ## Installation
 
@@ -59,6 +59,8 @@ if err := loader.StartStarter("Cron-Starter"); err != nil {
 }
 ```
 
+Registered starters must be non-nil, provide a non-nil `Setting`, and use a non-empty unique name. Lifecycle operations return explicit validation errors when the registration set is invalid.
+
 ## Lifecycle Ordering
 
 `Start` visits components in registration order. Register dependencies before consumers—for example, database and cache starters before HTTP or gRPC servers.
@@ -67,6 +69,8 @@ Two coordinated shutdown strategies are available:
 
 - `StopAllByRegisteredOrder(maxWaitTime)` stops components in registration order and ignores individual stop settings.
 - `StopAllBySetting(allMaxWaitTime...)` sorts by `Setting.StopPriority()`, supports asynchronous stops, and optionally limits the total wait time.
+
+Asynchronous stops run concurrently while synchronous stops preserve priority order. Returned results always follow the sorted starter order. If the total timeout expires, unfinished entries are `nil`; the returned slice remains immutable while unfinished background stops complete.
 
 Default standard-starter settings are:
 
@@ -101,6 +105,8 @@ After a component has stopped successfully, another `Start` or `StartStarter` ca
 ## Design Notes
 
 - The loader is a process-wide singleton; repeated initialization does not replace its registered components.
+- The registration lock is never held while invoking `Setting`, `Start`, `Stop`, or initialization callbacks, so lifecycle implementations may safely call other loader APIs.
+- Each registered starter has an independent transition guard that prevents overlapping start and stop operations.
 - A starter owns its resource initialization and shutdown details. The loader coordinates state and order but does not close raw resources itself.
 - `Stop` implementations must report `stopped` correctly. The loader only marks a component stopped when that value is true.
-- Use explicit errors from `parent/error.go` to distinguish missing registration, unknown component names, invalid restart transitions, and shutdown timeouts.
+- Use explicit errors from `parent/error.go` to distinguish missing or invalid registration, unknown or duplicate component names, invalid lifecycle transitions, and shutdown timeouts. The legacy `ErrMissStarters` and `ErrNoStarterSet` names remain aliases of `ErrNoStarter`.
