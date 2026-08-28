@@ -28,6 +28,11 @@ type callbackStarter struct {
 	stop    func()
 }
 
+type lazySettingStarter struct {
+	setting func() *Setting
+	start   func()
+}
+
 func (s *callbackStarter) Setting() *Setting {
 	return s.setting
 }
@@ -43,6 +48,21 @@ func (s *callbackStarter) Stop(maxWaitTime time.Duration) (gracefully, stopped b
 	if s.stop != nil {
 		s.stop()
 	}
+	return true, true, nil
+}
+
+func (s *lazySettingStarter) Setting() *Setting {
+	return s.setting()
+}
+
+func (s *lazySettingStarter) Start() (any, error) {
+	if s.start != nil {
+		s.start()
+	}
+	return s, nil
+}
+
+func (s *lazySettingStarter) Stop(maxWaitTime time.Duration) (gracefully, stopped bool, err error) {
 	return true, true, nil
 }
 
@@ -142,6 +162,33 @@ func TestStartUsesRegisteredOrderAndIsIdempotent(t *testing.T) {
 	assertStringSliceEqual(t, startOrder, []string{"first", "second"})
 	if !first.initCalled || !second.initCalled {
 		t.Fatal("init handler should be called after successful start")
+	}
+}
+
+func TestStartDoesNotEvaluateLaterSettingBeforePreviousStarterStarts(t *testing.T) {
+	resetTestLoader()
+
+	configReady := false
+	first := &lazySettingStarter{
+		setting: func() *Setting {
+			return NewSetting("config", false, 1, false, time.Second, nil)
+		},
+		start: func() {
+			configReady = true
+		},
+	}
+	second := &lazySettingStarter{
+		setting: func() *Setting {
+			if !configReady {
+				t.Fatal("later starter Setting evaluated before previous starter completed")
+			}
+			return NewSetting("database", false, 2, false, time.Second, nil)
+		},
+	}
+
+	currentLoader := InitStarterLoader([]Starter{first, second})
+	if err := currentLoader.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
 	}
 }
 

@@ -229,10 +229,12 @@ func (s *StarterLoader) Start() error {
 	if len(starters) == 0 {
 		return ErrMissStarters
 	}
-	if err := starters.validate(); err != nil {
-		return err
-	}
+	starterNames := make(map[string]struct{}, len(starters))
 	for _, wrapper := range starters {
+		// Setting可能依赖前序Starter完成初始化，必须在实际启动当前Starter前再校验。
+		if err := validateStarter(wrapper, starterNames); err != nil {
+			return err
+		}
 		if err := start(wrapper); err != nil {
 			return err
 		}
@@ -396,6 +398,26 @@ func (s starterWrappers) validate() error {
 		}
 		names[starterName] = struct{}{}
 	}
+	return nil
+}
+
+// validateStarter 按启动顺序校验单个Starter，避免提前触发后续Starter的Setting逻辑。
+func validateStarter(wrapper *starterWrapper, names map[string]struct{}) error {
+	if wrapper == nil || isNilStarter(wrapper.starter) {
+		return ErrNilStarter
+	}
+	setting := wrapper.starter.Setting()
+	if setting == nil {
+		return ErrSomeStarterNoSetting
+	}
+	starterName := setting.starterName
+	if starterName == "" {
+		return ErrEmptyStarterName
+	}
+	if _, exists := names[starterName]; exists {
+		return fmt.Errorf("%w: %s", ErrDuplicateStarterName, starterName)
+	}
+	names[starterName] = struct{}{}
 	return nil
 }
 
