@@ -70,7 +70,7 @@ Two coordinated shutdown strategies are available:
 - `StopAllByRegisteredOrder(maxWaitTime)` stops components in registration order and ignores individual stop settings.
 - `StopAllBySetting(allMaxWaitTime...)` sorts by `Setting.StopPriority()`, supports asynchronous stops, and optionally limits the total wait time.
 
-Asynchronous stops run concurrently while synchronous stops preserve priority order. Returned results always follow the sorted starter order. If the total timeout expires, unfinished entries are `nil`; the returned slice remains immutable while unfinished background stops complete.
+Asynchronous stops run concurrently while synchronous stops preserve priority order. Returned results always follow the sorted starter order. If the total timeout expires, unfinished entries are `nil`; background stops do not modify the returned snapshot or cancel when the wait expires.
 
 Default standard-starter settings are:
 
@@ -102,11 +102,11 @@ After a component has stopped successfully, another `Start` or `StartStarter` ca
 - `StopAllBySetting(...)` stops all components according to their settings.
 - `StoppedStarters()` returns components not currently in the started state.
 
-## Design Notes
+## Usage Constraints
 
-- The loader is a process-wide singleton; repeated initialization does not replace its registered components.
-- The registration lock is never held while invoking `Setting`, `Start`, `Stop`, or initialization callbacks, so lifecycle implementations may safely call other loader APIs.
-- Each registered starter has an independent transition guard that prevents overlapping start and stop operations.
-- A starter owns its resource initialization and shutdown details. The loader coordinates state and order but does not close raw resources itself.
-- `Stop` implementations must report `stopped` correctly. The loader only marks a component stopped when that value is true.
-- Use explicit errors from `parent/error.go` to distinguish missing or invalid registration, unknown or duplicate component names, invalid lifecycle transitions, and shutdown timeouts. The legacy `ErrMissStarters` and `ErrNoStarterSet` names remain aliases of `ErrNoStarter`.
+- Prefer one application startup followed by one shutdown. Overlapping lifecycle calls are not readiness barriers; use one startup flow to preserve dependency order.
+- Repeated initialization returns the existing loader and ignores new registration input.
+- Supply valid registrations before startup. A startup error leaves earlier components running; invalid registrations can also prevent loader-based shutdown.
+- A starter owns resource initialization, partial-start cleanup, and shutdown deadlines. The loader does not recover callback panics or force resource closure.
+- Report `stopped` accurately and inspect every shutdown result as well as the method error. A batch timeout leaves unfinished entries `nil` and does not cancel their background work.
+- Use `errors.Is` with the exported errors to distinguish lifecycle failures. `ErrMissStarters` and `ErrNoStarterSet` are aliases of `ErrNoStarter`.
