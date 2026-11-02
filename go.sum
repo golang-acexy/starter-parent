@@ -1,5 +1,5 @@
-github.com/acexy/golang-toolkit v1.26.2 h1:DkJzgW8OtlRca2LtwBkqrM78XJ/92UKJpbSocGqHGqA=
-github.com/acexy/golang-toolkit v1.26.2/go.mod h1:YH51By/qw3atCEEbrlOfT7Y+AW8Hq0uqgBMOpPekrF4=
+github.com/acexy/golang-toolkit v1.26.4 h1:IwPPOpFiaNBeQZHATW4O3I51uwikSyRUztiOBEVFw2A=
+github.com/acexy/golang-toolkit v1.26.4/go.mod h1:YH51By/qw3atCEEbrlOfT7Y+AW8Hq0uqgBMOpPekrF4=
 github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBBo=
 github.com/sirupsen/logrus v1.10.2/go.mod h1:SLEg8TqYulVKKfIGHldVp2K2aYz2DKSVBq4g/H5bR7Q=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
