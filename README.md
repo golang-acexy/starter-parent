@@ -14,7 +14,7 @@ One application process should initialize one loader. Components start in regist
 
 ## Requirements
 
-- Go `1.26.7`
+- Go `1.27.4`
 
 ## Installation
 
