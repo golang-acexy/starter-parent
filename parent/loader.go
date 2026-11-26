@@ -1,8 +1,10 @@
 package parent
 
 import (
+	"cmp"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -285,8 +287,8 @@ func (s *StarterLoader) StopAllBySetting(allMaxWaitTime ...time.Duration) ([]*St
 	copied := coll.SliceCollect(starters, func(item *starterWrapper) *starterWrapper {
 		return item
 	})
-	coll.SliceSort(copied, func(e *starterWrapper) int {
-		return int(e.starter.Setting().stopPriority)
+	slices.SortFunc(copied, func(a, b *starterWrapper) int {
+		return cmp.Compare(a.starter.Setting().stopPriority, b.starter.Setting().stopPriority)
 	})
 	stopResults := make([]*StopResult, len(copied))
 	var wg sync.WaitGroup

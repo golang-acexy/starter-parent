@@ -220,7 +220,7 @@ func TestStopAllBySettingUsesStopPriority(t *testing.T) {
 	resetTestLoader()
 
 	stopOrder := make([]string, 0)
-	high := newTestStarter("high", 20)
+	high := newTestStarter("high", ^uint(0))
 	low := newTestStarter("low", 0)
 	middle := newTestStarter("middle", 10)
 	high.stopOrder = &stopOrder
